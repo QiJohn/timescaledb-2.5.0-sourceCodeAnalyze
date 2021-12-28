@@ -1,0 +1,133 @@
+//函数post_analyze_hook，用于替代post_parse_analyze_hook
+//路径为：src/loader/loader.c/post_analyze_hook
+
+static void
+#if PG14_LT
+post_analyze_hook(ParseState *pstate, Query *query)
+#else
+post_analyze_hook(ParseState *pstate, Query *query, JumbleState *jstate)
+#endif
+{
+	if (query->commandType == CMD_UTILITY)
+	{
+		switch (nodeTag(query->utilityStmt))
+		{
+			case T_AlterDatabaseStmt: {
+				/*
+				 * On ALTER DATABASE SET TABLESPACE we need to stop background
+				 * workers for the command to succeed.
+				 */
+				AlterDatabaseStmt *stmt = (AlterDatabaseStmt *) query->utilityStmt;
+				if (list_length(stmt->options) == 1)
+				{
+					DefElem *option = linitial(stmt->options);
+					if (option->defname && strcmp(option->defname, "tablespace") == 0)
+					{
+						Oid db_oid = get_database_oid(stmt->dbname, false);
+
+						if (OidIsValid(db_oid))
+						{
+							ts_bgw_message_send_and_wait(RESTART, db_oid);
+							ereport(WARNING,
+									(errmsg("you may need to manually restart any running "
+											"background workers after this command")));
+						}
+					}
+				}
+				break;
+			}
+			case T_CreatedbStmt: {
+				/*
+				 * If we create a database and the database used as template
+				 * has background workers we need to stop those background
+				 * workers connected to the template database.
+				 */
+				CreatedbStmt *stmt = (CreatedbStmt *) query->utilityStmt;
+				ListCell *lc;
+
+				foreach (lc, stmt->options)
+				{
+					DefElem *option = lfirst(lc);
+					if (option->defname != NULL && option->arg != NULL &&
+						strcmp(option->defname, "template") == 0)
+					{
+						Oid db_oid = get_database_oid(defGetString(option), false);
+
+						if (OidIsValid(db_oid))
+							ts_bgw_message_send_and_wait(RESTART, db_oid);
+					}
+				}
+				break;
+			}
+			case T_DropdbStmt: {
+				DropdbStmt *stmt = (DropdbStmt *) query->utilityStmt;
+
+				/*
+				 * If we drop a database, we need to intercept and stop any of our
+				 * schedulers that might be connected to said db.
+				 */
+				stop_workers_on_db_drop(stmt);
+				break;
+			}
+			case T_DropStmt:
+				if (drop_statement_drops_extension((DropStmt *) query->utilityStmt))
+
+				/*
+				 * if we drop the extension we should restart (in case of
+				 * a rollback) the scheduler
+				 */
+				{
+					ts_bgw_message_send_and_wait(RESTART, MyDatabaseId);
+				}
+				break;
+			case T_DropOwnedStmt:
+				if (drop_owned_statement_drops_extension((DropOwnedStmt *) query->utilityStmt))
+					ts_bgw_message_send_and_wait(RESTART, MyDatabaseId);
+				break;
+			case T_RenameStmt:
+				if (((RenameStmt *) query->utilityStmt)->renameType == OBJECT_DATABASE)
+				{
+					RenameStmt *stmt = (RenameStmt *) query->utilityStmt;
+					Oid db_oid = get_database_oid(stmt->subname, stmt->missing_ok);
+
+					if (OidIsValid(db_oid))
+					{
+						ts_bgw_message_send_and_wait(STOP, db_oid);
+						ereport(WARNING,
+								(errmsg("you need to manually restart any running "
+										"background workers after this command")));
+					}
+				}
+				break;
+			default:
+
+				break;
+		}
+	}
+	if (!guc_disable_load &&
+		(query->commandType != CMD_UTILITY || load_utility_cmd(query->utilityStmt)))
+		extension_check();
+
+		/*
+		 * Call the extension's hook. This is necessary since the extension is
+		 * installed during the hook. If we did not do this the extension's hook
+		 * would not be called during the first command because the extension
+		 * would not have yet been installed. Thus the loader captures the
+		 * extension hook and calls it explicitly after the check for installing
+		 * the extension.
+		 */
+#if PG14_LT
+	call_extension_post_parse_analyze_hook(pstate, query);
+#else
+	call_extension_post_parse_analyze_hook(pstate, query, jstate);
+#endif
+
+	if (prev_post_parse_analyze_hook != NULL)
+	{
+#if PG14_LT
+		prev_post_parse_analyze_hook(pstate, query);
+#else
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+#endif
+	}
+}
