@@ -86,4 +86,4 @@ timescaledb_planner(Query *parse, int cursor_opts, ParamListInfo bound_params)
     return stmt;
 }
 
-![image](https://github.com/QiJohn/timescaledb-2.5.0-sourceCodeAnalyze/图片/函数timescaledb_planner流程图.png)
+![image](https://github.com/QiJohn/timescaledb-2.5.0-sourceCodeAnalyze/blob/main/图片/函数timescaledb_planner流程图.png)
