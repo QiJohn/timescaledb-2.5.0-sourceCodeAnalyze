@@ -1,1 +1,58 @@
+TimescaleDB中有两处名为“_PG_init”的函数
+src/loader/loader.c/_PG_init          //在PG数据库启动的时候执行
+void
+_PG_init(void)
+{
+    elog(LOG, "执行函数src/loader/loader.c/_PG_init");
+    if (!process_shared_preload_libraries_in_progress)
+    {
+        extension_load_without_preload();
+    }
+    extension_mark_loader_present();
 
+
+    elog(INFO, "timescaledb loaded");
+
+
+    ts_bgw_counter_shmem_alloc();    //共享内存分配
+    ts_bgw_message_queue_alloc();    //消息队列分配
+    ts_lwlocks_shmem_alloc();        //共享内存的轻量级锁配置
+    ts_bgw_cluster_launcher_register();   //1、设置动态加载的动态库名“timescaledb”；2、设置background worker进程的入口函数为“ts_bgw_cluster_launcher_main”
+                                          //3、调用函数RegisterBackgroundWorker，在PG中注册进程“TimescaleDB Background Worker Launcher”
+    ts_bgw_counter_setup_gucs();    //guc配置timescaledb的max_background_workers
+    ts_bgw_interface_register_api_version();  //修改PG中已注册的timescaledb.bgw_loader_api_version
+    ts_seclabel_init();    //在PG中注册标签“timescaledb”
+
+
+    /* This is a safety-valve variable to prevent loading the full extension */
+    DefineCustomBoolVariable(GUC_DISABLE_LOAD_NAME,
+                             "Disable the loading of the actual extension",
+                             NULL,
+                             &guc_disable_load,
+                             false,
+                             PGC_USERSET,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
+
+
+    /*
+     * Cannot check for extension here since not inside a transaction yet. Nor
+     * do we even have an assigned database yet.
+     * Using the post_parse_analyze_hook since it's the earliest available
+     * hook.
+     */
+    prev_post_parse_analyze_hook = post_parse_analyze_hook;
+    /* register shmem startup hook for the background worker stuff */
+    prev_shmem_startup_hook = shmem_startup_hook;
+
+
+    post_parse_analyze_hook = post_analyze_hook;
+    shmem_startup_hook = timescale_shmem_startup_hook;
+
+
+    /* register utility hook to handle a distributed database drop */
+    prev_ProcessUtility_hook = ProcessUtility_hook;
+    ProcessUtility_hook = loader_process_utility_hook;
+}
