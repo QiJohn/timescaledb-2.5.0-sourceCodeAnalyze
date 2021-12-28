@@ -1,6 +1,7 @@
 //函数post_analyze_hook，用于替代post_parse_analyze_hook
 //路径为：src/loader/loader.c/post_analyze_hook
 
+/**该hook为插件在parse analysis的最后阶段提供程序的控制权**/
 static void
 #if PG14_LT
 post_analyze_hook(ParseState *pstate, Query *query)
