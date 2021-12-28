@@ -26,7 +26,7 @@ timescaledb_set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti, Rang
 		(*prev_set_rel_pathlist_hook)(root, rel, rti, rte);
 
 	if (ts_cm_functions->set_rel_pathlist != NULL)
-		ts_cm_functions->set_rel_pathlist(root, rel, rti, rte);    //通过函数指针绑定函数tsl_set_rel_pathlist_dml
+		ts_cm_functions->set_rel_pathlist(root, rel, rti, rte);    //通过函数指针执行绑定的函数tsl_set_rel_pathlist_dml
 
 	switch (reltype)
 	{
@@ -56,7 +56,7 @@ tsl_set_rel_pathlist_dml(PlannerInfo *root, RelOptInfo *rel, Index rti, RangeTbl
 {
 	if (ht != NULL && TS_HYPERTABLE_HAS_COMPRESSION_TABLE(ht))
 	{
-		ListCell *lc;
+	        ListCell *lc;
 		Chunk *chunk = ts_chunk_get_by_relid(rte->relid, true);  //获取chunk
 		if (chunk->fd.compressed_chunk_id > 0)
 		{
