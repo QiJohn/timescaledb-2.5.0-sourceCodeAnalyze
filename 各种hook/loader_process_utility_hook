@@ -1,0 +1,70 @@
+src/loader/loader.c/loader_process_utility_hook
+
+static void
+loader_process_utility_hook(PlannedStmt *pstmt, const char *query_string,
+#if PG14_GE
+							bool readonly_tree,
+#endif
+							ProcessUtilityContext context, ParamListInfo params,
+							QueryEnvironment *queryEnv, DestReceiver *dest,
+#if PG13_GE
+							QueryCompletion *completion_tag
+#else
+							char *completion_tag
+#endif
+
+)
+{
+	bool is_distributed_database = false;
+	char *dist_uuid = NULL;
+	ProcessUtility_hook_type process_utility;
+
+	/* Check if we are dropping a distributed database and get its uuid */
+	switch (nodeTag(pstmt->utilityStmt))
+	{
+		case T_DropdbStmt: {      //删除数据库
+			DropdbStmt *stmt = castNode(DropdbStmt, pstmt->utilityStmt);
+			Oid dboid = get_database_oid(stmt->dbname, stmt->missing_ok);
+
+			if (OidIsValid(dboid))
+				is_distributed_database = ts_seclabel_get_dist_uuid(dboid, &dist_uuid);
+			break;
+		}
+		case T_SecLabelStmt: {    //数据库安全标签处理
+			SecLabelStmt *stmt = castNode(SecLabelStmt, pstmt->utilityStmt);
+
+			if (stmt->provider && strcmp(stmt->provider, SECLABEL_DIST_PROVIDER) == 0)
+				ereport(ERROR, (errmsg("TimescaleDB label is for internal use only")));
+			break;
+		}
+		default:
+			break;
+	}
+
+	/* Process the command */
+	if (prev_ProcessUtility_hook)
+		process_utility = prev_ProcessUtility_hook;
+	else
+		process_utility = standard_ProcessUtility;    //调用PG的standard_ProcessUtility
+
+	process_utility(pstmt,
+					query_string,
+#if PG14_GE
+					readonly_tree,
+#endif
+					context,
+					params,
+					queryEnv,
+					dest,
+					completion_tag);
+
+	/*
+	 * Show a NOTICE warning message in case of dropping a
+	 * distributed database
+	 */
+	if (is_distributed_database)
+		ereport(NOTICE,
+				(errmsg("TimescaleDB distributed database might require "
+						"additional cleanup on the data nodes"),
+				 errdetail("Distributed database UUID is \"%s\".", dist_uuid)));
+}
