@@ -1,1 +1,89 @@
+src/planner.c/timescaledb_planner                                         //替换PG的planner_hook 
 
+static PlannedStmt *
+#if PG13_GE     //针对不同版本的PG，planner_hook的参数不一样
+timescaledb_planner(Query *parse, const char *query_string, int cursor_opts,
+                    ParamListInfo bound_params)
+#else
+timescaledb_planner(Query *parse, int cursor_opts, ParamListInfo bound_params)
+#endif
+{
+    PlannedStmt *stmt;
+    ListCell *lc;
+
+
+    /*
+     * If we are in an aborted transaction, reject all queries.
+     * While this state will not happen during normal operation it
+     * can happen when executing plpgsql procedures.
+     */
+    if (IsAbortedTransactionBlockState())
+        ereport(ERROR,
+                (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
+                 errmsg("current transaction is aborted, "
+                        "commands ignored until end of transaction block")));
+
+
+    planner_hcache_push();   //固定Planner-global hypertable cache，确保planner和我们的hook函数指向同一个cache对象
+
+
+    PG_TRY();    //PG提供的try....catch.....
+    {
+        if (ts_extension_is_loaded())
+            preprocess_query((Node *) parse, parse);   //对query树进行预处理，1、标记与hypertable相关的RTE（设置RTE的ctename为“TS_CTE_EXPAND”，表示我们想自己控制表扩展）；2、关闭与hypertable相关RTE的继承性；3、重新排序连续聚合的GROUP BY子句；该函数会进行递归调用
+
+
+        if (prev_planner_hook != NULL)
+        /* Call any earlier hooks */
+#if PG13_GE
+            stmt = (prev_planner_hook)(parse, query_string, cursor_opts, bound_params);
+#else
+            stmt = (prev_planner_hook)(parse, cursor_opts, bound_params);
+#endif
+        else
+        /* Call the standard planner */
+#if PG13_GE
+            stmt = standard_planner(parse, query_string, cursor_opts, bound_params);
+#else
+            stmt = standard_planner(parse, cursor_opts, bound_params);    //调用PG定义的standard_planner函数
+#endif
+
+
+        if (ts_extension_is_loaded())
+        {
+            /*
+             * Our top-level HypertableInsert plan node that wraps ModifyTable needs
+             * to have a final target list that is the same as the ModifyTable plan
+             * node, and we only have access to its final target list after
+             * set_plan_references() (setrefs.c) has run at the end of
+             * standard_planner. Therefore, we fixup the final target list for
+             * HypertableInsert here.
+             */
+            ts_hypertable_insert_fixup_tlist(stmt->planTree);
+
+
+            foreach (lc, stmt->subplans)
+            {
+                Plan *subplan = (Plan *) lfirst(lc);
+
+
+                if (subplan)
+                    ts_hypertable_insert_fixup_tlist(subplan);  //根据ModifyTable的目标列表构造HypertableInsert 的目标列表，该列表在通过set_plan_references()创建后现已存在。
+            }
+        }
+    }
+    PG_CATCH();
+    {
+        /* Pop the cache, but do not release since caches are auto-released on
+         * error */
+        planner_hcache_pop(false);
+        PG_RE_THROW();
+    }
+    PG_END_TRY();
+
+
+    planner_hcache_pop(true);
+
+
+    return stmt;
+}
