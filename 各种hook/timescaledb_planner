@@ -60,7 +60,7 @@ timescaledb_planner(Query *parse, int cursor_opts, ParamListInfo bound_params)
              * HypertableInsert here.
              */
             ts_hypertable_insert_fixup_tlist(stmt->planTree);
-
+![image](https://github.com/QiJohn/timescaledb-2.5.0-sourceCodeAnalyze/blob/main/%E5%9B%BE%E7%89%87/%E5%87%BD%E6%95%B0timescaledb_planner%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
 
             foreach (lc, stmt->subplans)
             {
@@ -87,3 +87,4 @@ timescaledb_planner(Query *parse, int cursor_opts, ParamListInfo bound_params)
 
     return stmt;
 }
+
