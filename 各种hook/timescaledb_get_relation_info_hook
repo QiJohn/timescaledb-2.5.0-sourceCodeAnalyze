@@ -1,0 +1,96 @@
+//函数timescaledb_get_relation_info_hook，用于替代get_relation_info_hook
+//路径为：src/planner.c/timescaledb_get_relation_info_hook
+
+
+/**该hook用于编辑planner从relation处获取的信息。
+**在planning阶段，我们使用它来将我们自己的元数据附加到hypertable和chunk relation。我们也使用它来对hypertable进行扩展
+**/
+static void
+timescaledb_get_relation_info_hook(PlannerInfo *root, Oid relation_objectid, bool inhparent,
+								   RelOptInfo *rel)
+{
+	Hypertable *ht;
+
+	if (prev_get_relation_info_hook != NULL)
+		prev_get_relation_info_hook(root, relation_objectid, inhparent, rel);
+
+	if (!valid_hook_call())
+		return;
+
+	switch (classify_relation(root, rel, &ht))
+	{
+		case TS_REL_HYPERTABLE: {
+			/* This only works for PG12 because for earlier versions the inheritance
+			 * expansion happens too early during the planning phase
+			 */
+			RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);   //获取RTE
+			Query *query = root->parse;
+			/* Mark hypertable RTEs we'd like to expand ourselves.
+			 * Hypertables inside inlineable functions don't get marked during the query
+			 * preprocessing step. Therefore we do an extra try here. However, we need to
+			 * be careful for UPDATE/DELETE as Postgres (in at least version 12) plans them
+			 * in a complicated way (see planner.c:inheritance_planner). First, it runs the
+			 * UPDATE/DELETE through the planner as a simulated SELECT. It uses the results
+			 * of this fake planning to adapt its own UPDATE/DELETE plan. Then it's planned
+			 * a second time as a real UPDATE/DELETE, but with requiredPerms set to 0, as it
+			 * assumes permission checking has been done already during the first planner call.
+			 * We don't want to touch the UPDATE/DELETEs, so we need to check all the regular
+			 * conditions here that are checked during preprocess_query, as well as the
+			 * condition that rte->requiredPerms is not requiring UPDATE/DELETE on this rel.
+			 */
+			if (ts_guc_enable_optimizations && ts_guc_enable_constraint_exclusion && inhparent &&
+				rte->ctename == NULL && !IS_UPDL_CMD(query) && query->resultRelation == 0 &&
+				query->rowMarks == NIL && (rte->requiredPerms & (ACL_UPDATE | ACL_DELETE)) == 0)
+			{
+				rte_mark_for_expansion(rte);  //对RTE进行标记，即将RTE的ctename赋值为“ts_expand”
+			}
+			ts_create_private_reloptinfo(rel);  //为rel的fdw_private域分配TimescaleDBPrivate结构体
+			ts_plan_expand_timebucket_annotate(root, rel);   //扩展涉及的时间分区声明
+			break;
+		}
+		case TS_REL_CHUNK:
+		case TS_REL_CHUNK_CHILD: {
+			ts_create_private_reloptinfo(rel);
+
+			if (ts_guc_enable_transparent_decompression && TS_HYPERTABLE_HAS_COMPRESSION_TABLE(ht))
+			{
+				RangeTblEntry *chunk_rte = planner_rt_fetch(rel->relid, root);
+				Chunk *chunk = ts_chunk_get_by_relid(chunk_rte->relid, true);
+
+				if (chunk->fd.compressed_chunk_id > 0)
+				{
+					Relation uncompressed_chunk = table_open(relation_objectid, NoLock);
+
+					ts_get_private_reloptinfo(rel)->compressed = true;
+
+					/* Planning indexes are expensive, and if this is a compressed chunk, we
+					 * know we'll never need to use indexes on the uncompressed version, since
+					 * all the data is in the compressed chunk anyway. Therefore, it is much
+					 * faster if we simply trash the indexlist here and never plan any useless
+					 * IndexPaths at all
+					 */
+					rel->indexlist = NIL;
+
+					/* Relation size estimates are messed up on compressed chunks due to there
+					 * being no actual pages for the table in the storage manager.
+					 */
+					rel->pages = (BlockNumber) uncompressed_chunk->rd_rel->relpages;
+					rel->tuples = (double) uncompressed_chunk->rd_rel->reltuples;
+					if (rel->pages == 0)
+						rel->allvisfrac = 0.0;
+					else if (uncompressed_chunk->rd_rel->relallvisible >= rel->pages)
+						rel->allvisfrac = 1.0;
+					else
+						rel->allvisfrac =
+							(double) uncompressed_chunk->rd_rel->relallvisible / rel->pages;
+
+					table_close(uncompressed_chunk, NoLock);
+				}
+			}
+			break;
+		}
+		case TS_REL_HYPERTABLE_CHILD:
+		case TS_REL_OTHER:
+			break;
+	}
+}
