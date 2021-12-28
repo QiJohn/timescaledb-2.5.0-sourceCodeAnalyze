@@ -1,0 +1,76 @@
+//函数timescaledb_ddl_command_start，用于替代ProcessUtility_hook
+//路径为：src/process_utility.c/timescaledb_ddl_command_start
+
+/*
+ * ProcessUtility hook for DDL commands that have not yet been processed by
+ * PostgreSQL.
+ */
+static void
+timescaledb_ddl_command_start(PlannedStmt *pstmt, const char *query_string,
+#if PG14_GE
+							  bool readonly_tree,
+#endif
+							  ProcessUtilityContext context, ParamListInfo params,
+							  QueryEnvironment *queryEnv, DestReceiver *dest,
+#if PG13_GE
+							  QueryCompletion *completion_tag
+#else
+							  char *completion_tag
+#endif
+)
+{
+	ProcessUtilityArgs args = {
+		.query_string = query_string,
+		.context = context,
+		.params = params,
+#if PG14_GE
+		.readonly_tree = readonly_tree,
+#endif
+		.dest = dest,
+		.completion_tag = completion_tag,
+		.pstmt = pstmt,
+		.parsetree = pstmt->utilityStmt,
+		.queryEnv = queryEnv,
+		.parse_state = make_parsestate(NULL),
+		.hypertable_list = NIL
+	};
+
+	bool altering_timescaledb = false;
+	DDLResult result;
+
+	args.parse_state->p_sourcetext = query_string;
+
+	if (IsA(args.parsetree, AlterExtensionStmt))
+	{
+		AlterExtensionStmt *stmt = (AlterExtensionStmt *) args.parsetree;
+
+		altering_timescaledb = (strcmp(stmt->extname, EXTENSION_NAME) == 0);
+	}
+
+	/*
+	 * We don't want to load the extension if we just got the command to alter
+	 * it.
+	 */
+	if (altering_timescaledb || !ts_extension_is_loaded())
+	{
+		prev_ProcessUtility(&args);
+		return;
+	}
+
+	/*
+	 * Process Utility/DDL operation locally then pass it on for
+	 * execution in TSL.
+	 */
+	result = process_ddl_command_start(&args);
+
+	/*
+	 * We need to run tsl-side ddl_command_start hook before
+	 * standard process utility hook to maintain proper invocation
+	 * order of sql_drop and ddl_command_end triggers.
+	 */
+	if (ts_cm_functions->ddl_command_start)
+		ts_cm_functions->ddl_command_start(&args);
+
+	if (result == DDL_CONTINUE)
+		prev_ProcessUtility(&args);
+}
