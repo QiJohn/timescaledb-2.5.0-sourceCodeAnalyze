@@ -154,4 +154,3 @@ apply_optimizations(PlannerInfo *root, TsRelType reltype, RelOptInfo *rel, Range
 		}
 	}
 }
-![image](图片/函数timescaledb_planner流程图.png)
