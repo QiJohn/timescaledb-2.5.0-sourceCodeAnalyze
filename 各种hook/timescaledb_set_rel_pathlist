@@ -1,1 +1,70 @@
+//函数timescaledb_set_rel_pathlist，用于替代set_rel_pathlist_hook。
+//路径为：src/loader.c/timescaledb_set_rel_pathlist
 
+static void
+timescaledb_set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti, RangeTblEntry *rte)
+{
+	TsRelType reltype;
+	Hypertable *ht;
+
+	/* Quick exit if this is a relation we're not interested in */
+	if (!valid_hook_call() || !OidIsValid(rte->relid) || IS_DUMMY_REL(rel))
+	{
+		if (prev_set_rel_pathlist_hook != NULL)
+			(*prev_set_rel_pathlist_hook)(root, rel, rti, rte);
+		return;
+	}
+
+	reltype = classify_relation(root, rel, &ht);
+
+	/* Check for unexpanded hypertable */
+	if (!rte->inh && ts_rte_is_marked_for_expansion(rte))
+		reenable_inheritance(root, rel, rti, rte);
+
+	/* Call other extensions. Do it after table expansion. */
+	if (prev_set_rel_pathlist_hook != NULL)
+		(*prev_set_rel_pathlist_hook)(root, rel, rti, rte);
+
+	if (ts_cm_functions->set_rel_pathlist != NULL)
+		ts_cm_functions->set_rel_pathlist(root, rel, rti, rte);    //通过函数指针绑定函数tsl_set_rel_pathlist_dml
+
+	switch (reltype)
+	{
+		case TS_REL_HYPERTABLE_CHILD:
+			/* empty child is not of interest */
+			break;
+		case TS_REL_CHUNK:
+		case TS_REL_CHUNK_CHILD:
+			/* Check for UPDATE/DELETE (DLM) on compressed chunks */
+			if (IS_UPDL_CMD(root->parse) && dml_involves_hypertable(root, ht, rti))
+			{
+				if (ts_cm_functions->set_rel_pathlist_dml != NULL)
+					ts_cm_functions->set_rel_pathlist_dml(root, rel, rti, rte, ht);
+				break;
+			}
+			TS_FALLTHROUGH;
+		default:
+			apply_optimizations(root, reltype, rel, rte, ht);
+			break;
+	}
+}
+
+
+void
+tsl_set_rel_pathlist_dml(PlannerInfo *root, RelOptInfo *rel, Index rti, RangeTblEntry *rte,
+						 Hypertable *ht)
+{
+	if (ht != NULL && TS_HYPERTABLE_HAS_COMPRESSION_TABLE(ht))
+	{
+		ListCell *lc;
+		Chunk *chunk = ts_chunk_get_by_relid(rte->relid, true);  //获取chunk
+		if (chunk->fd.compressed_chunk_id > 0)
+		{
+			foreach (lc, rel->pathlist)
+			{
+				Path **pathptr = (Path **) &lfirst(lc);
+				*pathptr = compress_chunk_dml_generate_paths(*pathptr, chunk);  //DML压缩chunk的path
+			}
+		}
+	}
+}
