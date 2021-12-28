@@ -1,5 +1,7 @@
-TimescaleDB中有两处名为“_PG_init”的函数
+TimescaleDB中有两处名为“_PG_init”的函
+================================================================================
 src/loader/loader.c/_PG_init          //在PG数据库启动的时候执行
+
 void
 _PG_init(void)
 {
@@ -56,3 +58,67 @@ _PG_init(void)
     prev_ProcessUtility_hook = ProcessUtility_hook;
     ProcessUtility_hook = loader_process_utility_hook;
 }
+
+
+
+
+
+
+================================================================================
+src/init.c/_PG_init                 //在创建timescaledb插件时执行
+
+void
+_PG_init(void)
+{
+    elog(LOG, "执行函数src/init.c/_PG_init");
+    /*
+     * Check extension_is loaded to catch certain errors such as calls to
+     * functions defined on the wrong extension version
+     */
+    ts_extension_check_version(TIMESCALEDB_VERSION_MOD);  //核对timescaledb插件使用的sql脚本版本和SO动态库版本是否匹配
+    ts_extension_check_server_version();   //检查当前timescaledb插件是否支持正在使用的PG数据库
+    ts_bgw_check_loader_api_version();     //检查PG数据库实例已安装的timescaledb插件，是否支持当前版本的timescaldb
+
+
+    _cache_init();    //cache初始化；通过回调函数，实现事务(子事务)开始和结束时对于固定缓存的处理
+    _hypertable_cache_init();   //为hypertable创建cache
+    _cache_invalidate_init();   //无效cache的处理；同样会给事务(子事务)注册回调函数
+    _planner_init();   //设置planner_hook为“timescaledb_planner”、set_rel_pathlist_hook为“timescaledb_set_rel_pathlist”、get_relation_info_hook为“timescaledb_get_relation_info_hook”、create_upper_paths_hook为“timescale_create_upper_paths_hook”
+    _constraint_aware_append_init();   //调用PG的RegisterCustomScanMethods函数，注册“constraint_aware_append_plan_methods”
+    _chunk_append_init();              //调用PG的RegisterCustomScanMethods函数，注册“chunk_append_plan_methods”
+    _event_trigger_init();            //定义事件触发器，pg_event_trigger_ddl_commands、pg_event_trigger_dropped_objects
+    _process_utility_init();          //定义ProcessUtility_hook，在PG处理DDL语句前，先处理
+    _guc_init();                      //针对timescaledb的GUC配置  
+    _conn_plain_init();               //plain连接注册
+#ifdef TS_USE_OPENSSL
+    _conn_ssl_init();                //ssl连接注册
+#endif
+#ifdef TS_DEBUG
+    _conn_mock_init();               //mock连接注册
+    ts_debug_init();
+#endif
+
+
+    /* Register a cleanup function to be called when the backend exits */
+    on_proc_exit(cleanup_on_pg_proc_exit, 0);
+}
+
+【hook说明】
+1、timescaledb_planner：timescaledb定义的生成计划树函数，用于取代PG的standard_planner
+    planner_hook：生成计划树时hook
+    涉及该hook的函数有：planner
+
+2、timescaledb_set_rel_pathlist: 在原来构造的路径的基础上做编辑和修改
+    set_rel_pathlist_hook：构造访问路径时hook
+    涉及该hook的函数有：set_rel_pathlist
+
+3、timescaledb_get_relation_info_hook：在获取对象信息（大小、索引等）时进行修改
+    get_relation_info_hook：获取表对象信息时hook
+    涉及该hook的函数有：get_relation_info
+
+4、timescale_create_upper_paths_hook：编辑修改这些路径
+    create_upper_paths_hook：创建一些路径(分组聚合，窗口，排序等)时hook
+    涉及该hook的函数有：grouping_planner、create_grouping_paths、create_window_paths、create_distinct_paths、create_ordered_paths
+
+
+
