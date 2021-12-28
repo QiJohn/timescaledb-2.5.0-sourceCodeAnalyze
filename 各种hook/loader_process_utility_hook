@@ -1,4 +1,5 @@
-src/loader/loader.c/loader_process_utility_hook
+//函数loader_process_utility_hook，用于替换prev_ProcessUtility_hook
+//函数路径：src/loader/loader.c/loader_process_utility_hook
 
 static void
 loader_process_utility_hook(PlannedStmt *pstmt, const char *query_string,
