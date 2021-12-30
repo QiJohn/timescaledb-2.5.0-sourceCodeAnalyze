@@ -1,3 +1,7 @@
+ 
+ 
+ 
+
 CREATE SCHEMA IF NOT EXISTS _timescaledb_catalog;
 CREATE SCHEMA IF NOT EXISTS _timescaledb_internal;
 CREATE SCHEMA IF NOT EXISTS _timescaledb_cache;
@@ -5,6 +9,10 @@ CREATE SCHEMA IF NOT EXISTS _timescaledb_config;
 CREATE SCHEMA IF NOT EXISTS timescaledb_experimental;
 GRANT USAGE ON SCHEMA _timescaledb_cache, _timescaledb_catalog, _timescaledb_internal, _timescaledb_config TO PUBLIC;
 GRANT USAGE ON SCHEMA timescaledb_experimental TO PUBLIC;
+
+ 
+ 
+ 
 
 --
 -- The general compressed_data type;
@@ -94,11 +102,11 @@ CREATE TYPE rxid (
 -- hypertable 是一个抽象，表示一个表被划分为 N 维，其中每个维映射到表中的一列。维度可以是“开放”或“封闭”，这反映了将维度的键空间划分为“切片”的方案。
 -- 从概念上讲，分区 -- 称为“块”，是 N 维空间中的超立方体。块将超表元组的子集存储在磁盘上它自己的不同表中。跨越块的超立方体的切片每个对应于块表上的约束，从而在对超表数据的查询期间启用约束排除。
 
--- 开放维度
+-- 开放式维度
 ------------------
 -- 一个开放维度进行按需切片，只要一个元组落在现有切片之外，就会根据可配置的间隔创建一个新切片。开放维度非常适合递增的列，例如基于时间的列。
 
--- 封闭维度
+-- 封闭式维度
 --------------------
 -- 封闭维度将其键空间完全划分为可配置数量的切片。切片的数量可以重新配置，但新的分区只影响新创建的块。
 -- 唯一约束是 table_name +schema_name。排序很重要，因为我们在按 table_name 过滤时需要索引访问
@@ -161,11 +169,11 @@ CREATE TABLE IF NOT EXISTS _timescaledb_catalog.dimension (
   column_name name NOT NULL,
   column_type REGTYPE NOT NULL,
   aligned boolean NOT NULL,
-  -- closed dimensions
+  -- 封闭式维度
   num_slices smallint NULL,
   partitioning_func_schema name NULL,
   partitioning_func name NULL,
-  -- open dimensions (e.g., time)
+  -- 开放式维度 (e.g., time)
   interval_length bigint NULL CHECK (interval_length IS NULL OR interval_length > 0),
   integer_now_func_schema name NULL,
   integer_now_func name NULL,
@@ -193,7 +201,7 @@ SELECT pg_catalog.pg_extension_config_dump('_timescaledb_catalog.dimension_slice
 
 SELECT pg_catalog.pg_extension_config_dump(pg_get_serial_sequence('_timescaledb_catalog.dimension_slice', 'id'), '');
 
--- 块是 N 维超空间中的一个分区（超立方体）。 每个块与定义块的超立方体的 N 个约束相关联。 属于块的超立方体的元组存储在块的数据表中，如“schema_name”和“table_name”给出的。
+-- 一个chunk是 N 维超空间中的一个partition（hypercube，超立方体）。 每个块与定义块的超立方体的 N 个约束相关联。 属于块的超立方体的元组存储在块的数据表中，如“schema_name”和“table_name”给出的。
 CREATE SEQUENCE IF NOT EXISTS _timescaledb_catalog.chunk_id_seq MINVALUE 1;
 
 CREATE TABLE IF NOT EXISTS _timescaledb_catalog.chunk (
@@ -255,7 +263,7 @@ CREATE TABLE IF NOT EXISTS _timescaledb_catalog.chunk_data_node (
 SELECT pg_catalog.pg_extension_config_dump('_timescaledb_catalog.chunk_data_node', '');
 
 
--- 默认作业的 ID 空间为 [1,1000)。 用户安装的作业和在测试中创建的任何作业都被赋予了 id 空间 [1000, INT_MAX)。 这样，我们不会在其他 .sql 脚本中始终默认安装 pg_dump 作业。 这避免了 pg_restore 期间的插入冲突。
+-- 默认job的 ID 空间为 [1,1000)。 用户安装的job和在测试中创建的任何job都被赋予了 id 空间 [1000, INT_MAX)。 这样，我们不会在其他 .sql 脚本中始终默认安装 pg_dump job。 这避免了 pg_restore 期间的插入冲突。
 MINVALUE 1000;
 
 SELECT pg_catalog.pg_extension_config_dump('_timescaledb_config.bgw_job_id_seq', '');
