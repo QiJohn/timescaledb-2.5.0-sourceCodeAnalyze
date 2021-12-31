@@ -1,7 +1,3 @@
- 
- 
- 
-
 CREATE SCHEMA IF NOT EXISTS _timescaledb_catalog;
 CREATE SCHEMA IF NOT EXISTS _timescaledb_internal;
 CREATE SCHEMA IF NOT EXISTS _timescaledb_cache;
@@ -9,10 +5,6 @@ CREATE SCHEMA IF NOT EXISTS _timescaledb_config;
 CREATE SCHEMA IF NOT EXISTS timescaledb_experimental;
 GRANT USAGE ON SCHEMA _timescaledb_cache, _timescaledb_catalog, _timescaledb_internal, _timescaledb_config TO PUBLIC;
 GRANT USAGE ON SCHEMA timescaledb_experimental TO PUBLIC;
-
- 
- 
- 
 
 --
 -- The general compressed_data type;
@@ -26,14 +18,9 @@ CREATE TYPE rxid;
 
 --placeholder to allow creation of functions below
  
- 
- 
-
-
 -- 函数必须在 2 个地方运行：
 -- 1) 在types.pre.sql 和types.post.sql 之间的预安装中设置类型。
 -- 2) 在每次更新时确保函数指向正确的 versioned.so
-
 
 -- PostgreSQL 复合类型不支持约束检查。 这就是为什么任何具有 ts_interval 列的表都必须使用以下函数进行约束验证的原因。
 -- 该函数需要在执行 pre_install/tables.sql 之前定义，因为它被用作 ts_interval 类型的列的验证约束。
@@ -66,9 +53,6 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.rxid_in(cstring) RETURNS rxid
 CREATE OR REPLACE FUNCTION _timescaledb_internal.rxid_out(rxid) RETURNS cstring
     AS '$libdir/timescaledb-2.5.0', 'ts_remote_txn_id_out' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
- 
- 
-
 --
 -- The general compressed_data type;
 --
@@ -92,8 +76,6 @@ CREATE TYPE rxid (
 );
  
  
- 
-
 --注意：此文件中的 UPGRADE-SCRIPT-NEEDED 内容不会自动升级。
 -- 该文件包含用于表示超表和低级概念的各种抽象和数据结构的表定义。
 -- 超表
@@ -458,9 +440,7 @@ GRANT SELECT ON ALL SEQUENCES IN SCHEMA _timescaledb_catalog TO PUBLIC;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA _timescaledb_config TO PUBLIC;
 
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA _timescaledb_internal TO PUBLIC;
- 
- 
- 
+  
 
 --insert data for compression_algorithm --
 insert into _timescaledb_catalog.compression_algorithm( id, version, name, description) values
@@ -469,8 +449,6 @@ insert into _timescaledb_catalog.compression_algorithm( id, version, name, descr
 ( 2, 1, 'COMPRESSION_ALGORITHM_DICTIONARY', 'dictionary'),
 ( 3, 1, 'COMPRESSION_ALGORITHM_GORILLA', 'gorilla'),
 ( 4, 1, 'COMPRESSION_ALGORITHM_DELTADELTA', 'deltadelta');
- 
- 
  
 
 CREATE OR REPLACE FUNCTION _timescaledb_internal.restart_background_workers()
@@ -481,8 +459,6 @@ LANGUAGE C VOLATILE;
 SELECT _timescaledb_internal.restart_background_workers();
  
  
- 
-
 CREATE OR REPLACE FUNCTION timescaledb_fdw_handler()
 RETURNS fdw_handler
 AS '$libdir/timescaledb-2.5.0', 'ts_timescaledb_fdw_handler'
@@ -493,22 +469,14 @@ RETURNS void
 AS '$libdir/timescaledb-2.5.0', 'ts_timescaledb_fdw_validator'
 LANGUAGE C STRICT;
 
- 
- 
- 
 
 CREATE FOREIGN DATA WRAPPER timescaledb_fdw
   HANDLER timescaledb_fdw_handler
   VALIDATOR timescaledb_fdw_validator;
  
- 
- 
-
-
 -- 函数必须在 2 个地方运行：
 -- 1) 在types.pre.sql 和types.post.sql 之间的预安装中设置类型。
 -- 2) 在每次更新时确保函数指向正确的 versioned.so
-
 
 -- PostgreSQL 复合类型不支持约束检查。 这就是为什么任何具有 ts_interval 列的表都必须使用以下函数进行约束验证的原因。
 -- 该函数需要在执行 pre_install/tables.sql 之前定义，因为它被用作 ts_interval 类型的列的验证约束。
@@ -541,8 +509,6 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.rxid_in(cstring) RETURNS rxid
 CREATE OR REPLACE FUNCTION _timescaledb_internal.rxid_out(rxid) RETURNS cstring
     AS '$libdir/timescaledb-2.5.0', 'ts_remote_txn_id_out' LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
  
- 
- 
 
 CREATE OR REPLACE FUNCTION timescaledb_fdw_handler()
 RETURNS fdw_handler
@@ -554,9 +520,6 @@ RETURNS void
 AS '$libdir/timescaledb-2.5.0', 'ts_timescaledb_fdw_validator'
 LANGUAGE C STRICT;
 
- 
- 
- 
 
 -- 在超级表的根表上阻止插入的触发器
 CREATE OR REPLACE FUNCTION _timescaledb_internal.insert_blocker() RETURNS trigger
@@ -570,9 +533,6 @@ CREATE OR REPLACE FUNCTION set_integer_now_func(hypertable REGCLASS, integer_now
 AS '$libdir/timescaledb-2.5.0', 'ts_hypertable_set_integer_now_func'
 LANGUAGE C VOLATILE STRICT;
  
- 
- 
-
 -- 使用自适应分块时计算下一个块间隔的内置函数。 该函数可以替换为具有相同签名的用户定义函数。
 -- 传递给函数的参数如下：
 --Dimension_id：维度的ID，用于计算维度的区间dimension_coord：维度轴上触发此chunk创建的元组所在的坐标/点。
@@ -634,7 +594,6 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.create_chunk_table(
 RETURNS BOOL AS '$libdir/timescaledb-2.5.0', 'ts_chunk_create_empty_table' LANGUAGE C VOLATILE;
  
  
- 
 
 -- 检查数据节点是否已启动
 CREATE OR REPLACE FUNCTION _timescaledb_internal.ping_data_node(node_name NAME) RETURNS BOOLEAN
@@ -644,7 +603,6 @@ CREATE OR REPLACE FUNCTION _timescaledb_internal.remote_txn_heal_data_node(forei
 RETURNS INT
 AS '$libdir/timescaledb-2.5.0', 'ts_remote_txn_heal_data_node'
 LANGUAGE C STRICT;
- 
  
  
 
@@ -697,8 +655,6 @@ BEGIN
 END
 $BODY$;
  
- 
- 
 
 -------------------------------------------------- ---------------
 -- 实验性 DDL 函数和 API。
@@ -735,8 +691,6 @@ AS '$libdir/timescaledb-2.5.0', 'ts_copy_chunk_proc' LANGUAGE C;
 CREATE OR REPLACE PROCEDURE timescaledb_experimental.cleanup_copy_chunk_operation(
     operation_id NAME)
 AS '$libdir/timescaledb-2.5.0', 'ts_copy_chunk_cleanup_proc' LANGUAGE C;
- 
- 
  
 
 -- 此文件包含用于时间转换的实用程序。
@@ -810,8 +764,6 @@ RETURNS INT8 AS '$libdir/timescaledb-2.5.0', 'ts_continuous_agg_watermark' LANGU
 
 CREATE OR REPLACE FUNCTION _timescaledb_internal.subtract_integer_from_now( hypertable_relid REGCLASS, lag INT8 )
 RETURNS INT8 AS '$libdir/timescaledb-2.5.0', 'ts_subtract_integer_from_now' LANGUAGE C STABLE STRICT;
- 
- 
  
 
 -- 该文件包含与创建新超表相关的函数。
@@ -965,7 +917,6 @@ BEGIN
     RETURN ret;
 END
 $BODY$;
- 
  
  
 
@@ -1498,13 +1449,9 @@ $BODY$;
  
 
 -- time_bucket_ng() 是 time_bucket() 的 _experimental_ 新版本。
-——
 -- 与 time_bucket() 不同，time_bucket_ng() 支持可变大小的桶，例如月份和年份，以及时区。请注意，此功能的行为和界面可能会发生变化。可能存在错误，并且实现并不声称是完整的。使用风险自负。
-——
 -- 此函数可能会根据本地时区数据库的版本对相同的参数返回不同的结果。尽管如此，函数仍被标记为 IMMUTABLE。这与 PostgreSQL 提供的函数的易变性 [1] 是一致的。有关更多详细信息，请参阅讨论 [2]。
-——
 -- 我们不会禁止用户在未来使用时间戳记，也不会对这种极端情况发出警告。此行为与 PostgreSQL 行为一致 [3]。
-——
 -- [1]: https://www.postgresql.org/docs/current/xfunc-volatility.html
 -- [2]: https://postgr.es/m/CAJ7c6TOMG8zSNEZtCn5SPe+cCk3Lfxb71ZaQwT2F4T7PJ_t=KA@mail.gmail.com
 -- [3]: https://www.postgresql.org/docs/current/datatype-datetime.html#DATATYPE-TIMEZONES
@@ -1700,9 +1647,8 @@ $BODY$;
 
 -- 获取超表的关系大小
 -- 像 pg_relation_size(hypertable)
-——
 -- hypertable - hypertable 获取大小
-——
+
 -- Return：
 -- table_bytes - hypertable 使用的磁盘空间（如 pg_relation_size(hypertable)）
 -- index_bytes - 索引使用的磁盘空间
@@ -1837,7 +1783,7 @@ $BODY$;
 
 -- 获取超表块的关系大小
 -- hypertable - hypertable 获取大小
-——
+
 -- Return：
 -- chunk_schema - 块的模式名称
 -- chunk_name - 块表名
