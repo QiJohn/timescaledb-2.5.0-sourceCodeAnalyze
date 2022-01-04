@@ -1,3 +1,8 @@
+--“_timescaledb_catalog、_timescaledb_internal、_timescaledb_cache”这些是 TimescaleDB 扩展使用的内部架构，用于cache/catalog/internal function和table。
+--它们是扩展正常运行所必需的。它们在安装扩展程序时安装，如果您删除扩展程序（连同有关扩展程序的所有其他内容，包括您的数据，如果它在超表中并且您使用级联运行命令），
+--它们将被删除。有关它们的安装位置，请参阅https://github.com/timescale/timescaledb/blob/master/sql/pre_install/schemas.sql。它们在代码库中有不同的用途，
+--并包含不同类型的函数/表。
+
 CREATE SCHEMA IF NOT EXISTS _timescaledb_catalog;
 CREATE SCHEMA IF NOT EXISTS _timescaledb_internal;
 CREATE SCHEMA IF NOT EXISTS _timescaledb_cache;
