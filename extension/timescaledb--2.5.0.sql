@@ -526,7 +526,7 @@ AS '$libdir/timescaledb-2.5.0', 'ts_timescaledb_fdw_validator'
 LANGUAGE C STRICT;
 
 
--- 在超级表的根表上阻止插入的触发器
+-- 在超级表的根表上块插入的触发器
 CREATE OR REPLACE FUNCTION _timescaledb_internal.insert_blocker() RETURNS trigger
 AS '$libdir/timescaledb-2.5.0', 'ts_hypertable_insert_blocker' LANGUAGE C;
 
