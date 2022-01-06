@@ -1,3 +1,8 @@
+-----------主要用于分析TimescaleDB的“TimescaleDB Background Worker Scheduler”进程-------------------
+---涉及的表有_timescaledb_internal.bgw_job_stat、_timescaledb_config_bgw_job。
+---当使用add_job向timescaleDB注册job后，scheduler进程中“ts_bgw_db_scheduler_entrypoint”才会被触发执行
+
+
 /*
  * Register a background worker that calls the main TimescaleDB background
  * worker launcher library (i.e. loader) and uses the scheduler entrypoint
