@@ -1,0 +1,57 @@
+ /* ----------------
+  *      PlannedStmt node
+  *
+*计划器的输出是以PlanndStmt节点为首的Plan树。
+*PlanndStmt保存执行者需要的“一次”信息。
+*为简化API，我们还将实用程序语句包装在PlanndStmt节点中；在这种情况下，CommandType==CMD_UTILITY，语句本身在utilityStmt字段中，而结构的其余部分大多是虚拟的。
+*(我们使用canSetTag、stmt_location、stmt_len，可能还会使用queryId。)
+  * ----------------
+  */
+typedef struct PlannedStmt
+{
+    NodeTag     type;                          //这是节点的标识符号Tag
+    CmdType     commandType;                   /*命令型別 select|insert|update|delete|utility */
+    uint64      queryId;                       /*query的ID   query identifier (copied from Query) */
+    bool        hasReturning;                  /*是否insert|update|delete命令的RETURNING?   is it insert|update|delete RETURNING? */
+    
+    //CTE= Common Table Expressions(With語句)
+    bool        hasModifyingCTE;               /*WITH语句中是否存在insert|update|delete关键字  has insert|update|delete in WITH? */
+    bool        canSetTag;                     /*我要设置命令结果标签吗？ do I set the command result tag? */
+    bool        transientPlan;                 /*TransactionXmin更改时是否重做计划？ redo plan when TransactionXmin changes? */
+    bool        dependsOnRole;                 /*计划是否针对当前角色？ is plan specific to current role? */
+    bool        parallelModeNeeded;            /*执行是否需要并行模式？ parallel mode required to execute? */
+    int         jitFlags;                      /*使用哪种形式的JIT which forms of JIT should be performed */
+    struct Plan *planTree;                     /*Plan节点数，这是SQL语句的关键信息 tree of Plan nodes */
+    List       *rtable;                        /*SQL所依赖的RTE(包括子查询等) list of RangeTblEntry nodes */
+
+    /* INSERT/UPDATE/DELETE命令所影响的关系在rtable中的位置(index) */
+    List       *resultRelations;               /*RT 索引的整数列表，或NIL    integer list of RT indexes, or NIL */
+    List       *nonleafResultRelations;        //查询中提到的所有分区表上 UPDATE/DELETE 的非叶目标关系的表索引。
+    
+    //UPDATE/DELETE命令相關
+    List       *rootResultRelations;           //UPDATE/DELETE 的根目标关系的表索引； 此列表在非 leafResultRelations 中维护 RT 索引的子集，指示各个分区层次结构的根。
+    
+    //子查詢計劃連結串列
+    List       *subplans;                      /* 子计划表达式的计划树； 请注意，有些可能是 NULL */
+    Bitmapset  *rewindPlanIDs;                 /* 需要 REWIND 的子计划索引 */
+  
+    List       *rowMarks;                      /* PlanRowMark 的列表 */
+    
+    //Plan相关的关系OIDs(Relation OIDs),通过pg_class可以查询
+    List       *relationOids;                  /*plan所依赖的关系的OID;  OIDs of relations the plan depends on */
+    List       *invalItems;                    /*其他依赖项，如 PlanInvalItems; other dependencies, as PlanInvalItems */
+    List       *paramExecTypes;                /*PARAM_EXEC参数的类型OID;  type OIDs for PARAM_EXEC Params */
+    
+    //工具类语句(如CREATE TABLE等)节点
+    Node       *utilityStmt;                   /*如果是工具类stmt，则为非null；  non-null if this is utility stmt */
+
+    /*stmt在源字符串中的位置（该字符串拷贝自Query）*/
+    int         stmt_location;                 /*起始位置，如果未知，则为 -1； start location, or -1 if unknown */
+    
+    //SQL语句的长度
+    int         stmt_len;                      /* 字节长度； 0 表示“字符串的其余部分”*/
+} PlannedStmt;
+ 
+ /* 定义宏，用于获取与子计划节点相关联的计划*/
+ #define exec_subplan_get_plan(plannedstmt, subplan) \
+     ((Plan *) list_nth((plannedstmt)->subplans, (subplan)->plan_id - 1))
