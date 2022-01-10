@@ -1,0 +1,139 @@
+
+/*
+ * 对于Portals(客户端请求)，有几种执行策略，具体取决于要执行什么查询。(注意:无论什么情况下，一个Portal只执行一个source-SQL查询，因此从用户的角度来看只产生一个结果。
+ * 但是，规则重写器可以将单个源查询扩展为零或多个实际查询。
+ */
+typedef enum PortalStrategy
+{
+    PORTAL_ONE_SELECT,   //包含一个SELECT查询,按需要的结果重复(递增)地运行执行器,该策略还支持可持有游标(执行器结果可以在事务完成后转储到tuplestore中进行访问)。
+    PORTAL_ONE_RETURNING,  //包含一个带有RETURNING子句的INSERT/UPDATE/DELETE查询(可能还包括由规则重写添加的辅助查询)。
+                           //在第一次执行时，运行Portal来完成并将主查询的结果转储到Portal的tuplestore中; 然后根据需要将结果返回给客户端。
+                           //(我们不能支持半途中断的查询，因为AFTER触发器代码无法处理，也因为不想冒执行所有辅助查询失败的风险)。
+    PORTAL_ONE_MOD_WITH,   //只包含一个SELECT查询，但它具有数据修改的CTEs。这与PORTAL_ONE_RETURNING的情况相同，因为可能需要触发触发器。将来它的行为可能更像PORTAL_ONE_SELECT。
+    PORTAL_UTIL_SELECT,    //包含一个实用程序语句，该语句返回一个类似SELECT的结果(例如，EXPLAIN或SHOW)。
+                           //在第一次执行时，运行语句并将其结果转储到portal tuplestore;然后根据需要将结果返回给客户端。
+    PORTAL_MULTI_QUERY     //除上述情况外的其他情况。在这里，不支持部分执行:Portal的查询语句将在第一次调用时运行到完成。
+} PortalStrategy;
+
+/*
+ * Portal总是处于这些状态中的之一。如果查询没有运行到完成，则可以从活动状态转回准备状态;否则永远不会后退。
+ */
+typedef enum PortalStatus
+{
+    PORTAL_NEW,                 /* 刚创建;freshly created */
+    PORTAL_DEFINED,             /* PortalDefineQuery完成;PortalDefineQuery done */
+    PORTAL_READY,               /* PortalStart完成;PortalStart complete, can run it */
+    PORTAL_ACTIVE,              /* Portal正在运行;portal is running (can't delete it) */
+    PORTAL_DONE,                /* Portal已经完成;portal is finished (don't re-run it) */
+    PORTAL_FAILED               /* Portal出现错误;portal got error (can't re-run it) */
+} PortalStatus;
+
+typedef struct PortalData *Portal;//结构体指针
+
+typedef struct PortalData
+{
+    const char *name;                                   /* portal的名称;portal's name */
+    const char *prepStmtName;                           /* 已完成准备的源语句;source prepared statement (NULL if none) */
+    MemoryContext portalContext;                        /* 内存上下文;subsidiary memory for portal */
+    ResourceOwner resowner;                             /* 资源的owner;resources owned by portal */
+    void        (*cleanup) (Portal portal);             /* cleanup钩子函数;cleanup hook */
+
+    /*
+     * 状态数据，用于记住在哪个子事务中创建或使用Portal。如果Portal是从以前的事务中持有的，那么两个subxids都应该是InvalidSubTransactionId。
+     * 否则，createSubid是正在创建的subxact，而activeSubid是运行Portal的最后一个subxact。
+     */
+    SubTransactionId createSubid;                       /* 正在创建的subxact;the creating subxact */
+    SubTransactionId activeSubid;                       /* 活动的最后一个subxact;the last subxact with activity */
+
+   
+    //portal将会执行的Query
+    const char *sourceText;                             /* 查询的源文本;text of query (as of 8.4, never NULL) */
+    const char *commandTag;                             /* 源查询的命令tag;command tag for original query */
+    List       *stmts;                                  /* PlannedStmt链表;list of PlannedStmts */
+    CachedPlan *cplan;                                  /* 缓存的PlannedStmts;CachedPlan, if stmts are from one */
+
+    ParamListInfo portalParams;                         /* 传递给查询的参数;params to pass to query */
+    QueryEnvironment *queryEnv;                         /* 查询的执行环境;environment for query */
+
+    /* 功能/选项 */
+    PortalStrategy strategy;                            /* 场景;see above */
+    int         cursorOptions;                          /* DECLARE CURSOR选项位;DECLARE CURSOR option bits */
+    bool        run_once;                               /* 是否只执行一次;portal will only be run once */
+
+    /* 状态数据 */
+    PortalStatus status;                                /* Portal的状态;see above */
+    bool        portalPinned;                           /* 是否不能被清除;a pinned portal can't be dropped */
+    bool        autoHeld;                               /* 是否自动从pinned到held (see HoldPinnedPortals()) */
+
+    //如不为NULL,执行器处于活动状态
+    QueryDesc  *queryDesc;                              /* 执行器需要使用的信息;info needed for executor invocation */
+
+    //如Portal需要返回元组,这是元组的描述
+    TupleDesc   tupDesc;                                /* 结果元组的描述;descriptor for result tuples */
+    
+    //列信息的格式码
+    int16      *formats;                                /* 每一列的格式码;a format code for each column */
+
+    /*
+     * 在这里，为持有的游标或PORTAL_ONE_RETURNING或PORTAL_UTIL_SELECT存储元组。
+     * (在事务结束后持有的游标不再具有任何活动执行器状态。)
+     */
+    Tuplestorestate *holdStore;                         /* 存储持有的游标信息;store for holdable cursors */
+    MemoryContext holdContext;                          /* 持有holdStore的内存上下文;memory containing holdStore */
+
+    /*
+     * 读取holdStore中元组的Snapshot。 如果元组包含TOAST引用的可能性存在，那么必须保持对该快照的引用，
+     * 因为释放快照可能会使最近废弃的行与属于它们的TOAST数据一起被清除。 对于持有的游标，通过强制解压数据来避免需要保留这样的快照。
+     */
+    Snapshot    holdSnapshot;                           /* 已注册的快照信息,如无则为NULL;registered snapshot, or NULL if none */
+
+    /*
+     * atStart、atEnd和portalPos表示当前光标的位置。 portalPos在第一行之前为0，在获取第N行查询后为N。 在运行结束后，portalPos = #查询中的行号，atEnd为T。
+     * 注意，atStart表示portalPos == 0，但不是相反:我们可能只回到到第一行，而不是开始。 还要注意，各种代码在开始和结束时都要检查，但是只有Portal移动例程应该访问portalPos。
+     */
+    bool        atStart;                               //处于开始位置?
+    bool        atEnd;                                 //处于结束位置?
+    uint64      portalPos;                             //实际行号
+
+    //用于表示的数据，主要由pg_cursors系统视图使用
+    TimestampTz creation_time;                         /* portal定义的时间;time at which this portal was defined */
+    bool        visible;                               /* 是否在pg_cursors中可见? include this portal in pg_cursors? */
+}PortalData;  //包括场景PortalStrategy枚举定义，PortalStatus状态定义，PortalData结构体，等
+
+/*
+ *  判断Portal是否有效
+ */
+#define PortalIsValid(p) PointerIsValid(p)
+
+
+/* ----------------
+ *      query descriptor:
+ *
+ *  QueryDesc封装了执行器执行查询所需的所有内容。
+ *  为了使用SQL函数，还需要支持包含实用语句的QueryDescs；但是，这些内容不能传递给执行程序。
+ * ---------------------
+ */
+typedef struct QueryDesc
+{
+    //以下变量由CreateQueryDesc函数设置
+    CmdType     operation;                             /* 操作类型,如CMD_SELECT等;CMD_SELECT, CMD_UPDATE, etc. */
+    PlannedStmt *plannedstmt;                          /* 已规划的语句,规划器的输出;planner's output (could be utility, too) */
+    const char *sourceText;                            /* 源SQL文本;source text of the query */
+    Snapshot    snapshot;                              /* 查询使用的快照;snapshot to use for query */
+    Snapshot    crosscheck_snapshot;                   /* RI 更新/删除交叉检查快照;crosscheck for RI update/delete */
+    DestReceiver *dest;                                /* 元组输出的接收器;the destination for tuple output */
+    ParamListInfo params;                              /* 需传入的参数值;param values being passed in */
+    QueryEnvironment *queryEnv;                        /* 查询环境变量;query environment passed in */
+    int         instrument_options;                    /* InstrumentOption选项;OR of InstrumentOption flags */
+
+    //以下变量由ExecutorStart函数设置
+    TupleDesc   tupDesc;                               /* 结果元组tuples描述;descriptor for result tuples */
+    EState     *estate;                                /* 执行器状态;executor's query-wide state */
+    PlanState  *planstate;                             /* per-plan-node状态树;tree of per-plan-node state */
+
+    //以下变量由ExecutorRun设置
+    bool        already_executed;                      /* 先前已执行,则为T;true if previously executed */
+
+    //内核设置为NULL,可由插件修改
+    struct Instrumentation *totaltime;                 /* ExecutorRun函数所花费的时间;total time spent in ExecutorRun */
+} QueryDesc;  //封装了执行器执行查询所需的所有内容。
