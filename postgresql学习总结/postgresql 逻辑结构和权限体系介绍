@@ -1,0 +1,109 @@
+1、逻辑结构
+========================================================================================
+== 	  第一层     ||     postgresql实例      ||     IP:port                             ==
+========================================================================================
+== 	  第二层     ||     数据库              ||     数据库名称                           ==
+========================================================================================
+== 	  第三层     ||     schema              ||    模式名称                             ==
+========================================================================================
+== 	  第四层     ||     对象                || 	  表、视图、函数、序列、操作符、索引.... ==
+========================================================================================
+在“逻辑结构”中，最上层是“postgresql实例”，实例中允许创建多个“数据库”，每个数据库中可以创建多个“schema”，每个schema下面可以创建多个“对象”
+
+
+
+
+
+2、权限体系
+=============================================================================================================================
+== 	  第一层     ||     postgresql实例权限     ||     通过修改pg_hba.conf控制实例的访问权限                                   ==
+=============================================================================================================================
+== 	  第二层     ||     数据库权限             ||     grant赋予是否允许连接或创建schema的权限、revoke回收权限                   ==
+=============================================================================================================================
+== 	  第三层     ||     schema权限             ||    grant赋予允许查询schema中对象或在schema中创建对象的权限、revoke回收权限    ==
+=============================================================================================================================
+== 	  第四层     ||     对象权限               || 	  grant赋予权限、revoke回收权限                                            ==
+=============================================================================================================================
+== 	            ||     表空间权限              || 	  grant赋予允许在对应表空间创建视图、索引、零时表的权限、revoke回收权限     ==
+=============================================================================================================================
+在数据库中所有的权限都和角色(用户)挂钩，public是一个特殊的角色，代表所有人默认权限。【用户和角色在postgresql中式一个概念、一个意思】
+
+
+
+3、如何查看和解读一个对象的当前权限状态
+以表为例，执行命令：  select  relname, relacl  from  pg_class   where relkind='r';
+或者执行
+	SELECT n.nspname as "Schema",
+	  c.relname as "Name",
+	  CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'S' THEN 'sequence' WHEN 'f' THEN 'foreign table' END as "Type",
+	  pg_catalog.array_to_string(c.relacl, E'\n') AS "Access privileges",
+	  pg_catalog.array_to_string(ARRAY(
+	    SELECT attname || E':\n  ' || pg_catalog.array_to_string(attacl, E'\n  ')
+	    FROM pg_catalog.pg_attribute a
+	    WHERE attrelid = c.oid AND NOT attisdropped AND attacl IS NOT NULL
+	  ), E'\n') AS "Column privileges",
+	  pg_catalog.array_to_string(ARRAY(
+	    SELECT polname
+	    || CASE WHEN polcmd != '*' THEN
+  	         E' (' || polcmd || E'):'
+ 	      ELSE E':' 
+	       END
+ 	   || CASE WHEN polqual IS NOT NULL THEN
+    	       E'\n  (u): ' || pg_catalog.pg_get_expr(polqual, polrelid)
+  	     ELSE E''
+   	    END
+ 	   || CASE WHEN polwithcheck IS NOT NULL THEN
+    	       E'\n  (c): ' || pg_catalog.pg_get_expr(polwithcheck, polrelid)
+  	     ELSE E''
+ 	      END    || CASE WHEN polroles <> '{0}' THEN
+	           E'\n  to: ' || pg_catalog.array_to_string(
+        	       ARRAY(
+       	            SELECT rolname
+       	            FROM pg_catalog.pg_roles
+       	            WHERE oid = ANY (polroles)
+    	               ORDER BY 1
+ 	              ), E', ')
+ 	      ELSE E''
+ 	      END
+	    FROM pg_catalog.pg_policy pol
+ 	   WHERE polrelid = c.oid), E'\n')
+ 	   AS "Policies"
+	FROM pg_catalog.pg_class c
+ 	    LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+	WHERE c.relkind IN ('r', 'v', 'm', 'S', 'f')
+	  AND n.nspname !~ '^pg_' AND pg_catalog.pg_table_is_visible(c.oid)
+	ORDER BY 1, 2;
+
+得到的权限说明如下
+	 Schema |      Name       |   Type   |       Access privileges        | Column privileges | Policies 
+	--------+-----------------+----------+--------------------------------+-------------------+----------
+	 public | sbtest1         | table    | postgres=arwdDxt/postgres     +|                   | 
+    	    |                 |          | digoal=a*r*w*d*D*x*t*/postgres |                   | 
+	 public | sbtest10        | table    | postgres=arwdDxt/postgres      |                   | 
+	 public | sbtest10_id_seq | sequence |                                |                   | 
+	 public | sbtest11        | table    | postgres=arwdDxt/postgres      |                   | 
+	 public | sbtest11_id_seq | sequence |                                |                   | 
+	 public | sbtest12        | table    | postgres=arwdDxt/postgres      |                   | 
+	 public | sbtest12_id_seq | sequence |                                |                   | 
+
+其中“Access privileges”即为权限说明，以"postgres=arwdDxt/postgres"为例，“postgres=arwdDxt”中“postgres”就是被赋予权限的用户名；“arwdDxt”为具体的权限，如果为“xxx”则表示为默认的public角色权限；“/postgres”中的“postgres”为赋予这个权限的用户名。
+	rolename=xxxx -- privileges granted to a role
+	        =xxxx -- privileges granted to PUBLIC
+
+ 	            r -- SELECT ("read")
+  	            w -- UPDATE ("write")
+	            a -- INSERT ("append")
+            	d -- DELETE
+            	D -- TRUNCATE
+            	x -- REFERENCES
+            	t -- TRIGGER
+            	X -- EXECUTE
+            	U -- USAGE
+            	C -- CREATE
+            	c -- CONNECT
+            	T -- TEMPORARY
+      	arwdDxt -- ALL PRIVILEGES (for tables, varies for other objects)
+            	* -- grant option for preceding privilege
+
+
+
