@@ -1,0 +1,57 @@
+postgresql中有好几类锁，其中最主要的是表级锁与行级锁。表级锁通常是各种命令执行时自动获取的，或者通过事务中的LOCK语句自动显式获取；而行级锁则是由SELECT命令显式获取。
+
+===================================表锁======================
+【表锁演进历史介绍】
+    最原始的表锁只有两种：ShareLock(共享锁，即读锁)、ExclusiveLock(排它锁，即写锁)。
+    后来随着多版本并发控制技术的出现(postgresql使用快照隔离实现MVCC)，读不阻塞写，写不阻塞读，因而原有单一的Share、Exclusive锁模型就都需要升级了，分别升级成AccessShareLock(多版本并发访问共享锁)、AccessExclusiveLock(多版本并发访问排它锁)。
+    表级锁虽然可以解决并发写入冲突问题，但这个粒度太大了，会影响并发度：因为同一时刻一张表上只能有一个进程持有Exclusive锁并执行写入，而典型的OLTP场景是以单行写入为主。所以常见的DBMS解决写-写冲突都是采用行级锁来实现，为了协调这两种锁之间的关系，需要引入意向锁(表锁)。意向锁用于保护较低资源级别上的锁，即说明下层节点已经被加了锁。当进程想要锁定或修改某表上的某一行时，它会在这一行上加上行级锁。但在加行级锁之前，它还需要在这张表上加上一把意向锁，表示自己将会在表中的若干行上加锁。升级后意向锁为：RowShareLock(行级别共享锁对应的表级意向锁)、RowExclusiveLock(行级别排它锁对应的表级意向锁)。
+    为了解决RowExclusiveLock、ShareLock不自斥的问题，引入了该两种锁的自斥版本:ShareRowExclusiveLock、ShareUpdateExclusiveLock
+
+【表锁详细介绍】
+1．ACCESS SHARE（访问共享锁）
+只与ACCESS EXCLUSIVE锁冲突。SELECT命令会在当前查询的表上获取一个ACCESS SHARE锁。总的来说，任何一个对表的只读操作都会获取该锁。
+2．ROW SHARE（行共享锁）
+与EXCLUSIVE锁和ACCESS EXCLUSIVE锁冲突。SELECT FOR UPDATE或者SELECT FOR SHARE命令会在目标表上获取该锁，并且所有被引用但是没有FOR UPDATE的表上会加上ACCESS SHARED锁。
+3．ROW EXCLUSIVE（行排他锁）
+和SHARE，SHARE ROW EXCLUSIVE和ACCESS EXCLUSIVE锁冲突。UPDATE，DELETE和INSERT会在目标表上获取该锁，总的来说，任何对数据库数据进行修改的命令会获取到该锁。
+4．SHARE UPDATE EXCLUSIVE（共享更新排他锁）
+和SHARE UPDATE EXCLUSIVE，SHARE ROW EXCLUSIVE，EXCLUSIVE和ACCESS EXCLUSIVE冲突，该锁可以保护表防止并发的(schema)改变和VACUUM(释放空间)命令。VACUUM，ANALYZE，CREATE INDEX CONCURRENTLY和ALTER TABLE VALIDATE以及其他ALTER TABLE类的命令会获取该锁。
+5．SHARE（共享锁）
+和ROW EXCLUSIVE，SHARE UPDATE EXCLUSIVE，SHARE ROW EXCLUSIVE，EXCLUSIVE和ACCESS EXCLUSIVE锁冲突。该锁保护一个表防止并发的数据改变。由CREATE INDEX命令获得。
+6．SHARE ROW EXCLUSIVE（行共享排他锁）
+和ROW EXCLUSIVE，SHARE UPDATE EXCLUSIVE，SHARE，SHARE ROW EXCLUSIVE，EXCLUSIVE以及ACCESS EXCLUSIVE锁冲突，该锁用于保护一个表防止并发的数据改变，同时是自排他的，所以在同一时间只有同一个session可以持有该锁。该锁不会被PGSQL的任何命令自动获取。
+7．EXCLUSIVE（排它锁）
+和ROW SHARE，ROW EXCLUSIVE，SHARE UPDATE EXCLUSIVE，SHARE，SHARE ROW EXCLUSIVE，EXCLUSIVE和ACCESS EXCLUSIVE锁冲突。该锁只允许并发的ACCESS SHARE锁，只有只读操作能在一个事务持有排他锁的时候进行并发操作。
+8．ACCESS EXCLUSIVE（访问排他锁）
+和所有的锁都冲突，该锁保证只有持有锁的事务能够访问当前表。被DROP TABLE，TRUNCATE，REINDEX，CLUSTER，VACUUM FULL和REFRESH MATERIALIZED VIEW命令自动获取。有很多种形式的ALTER TABLE命令可以获取该锁，它同样也是LOCK TABLE命令默认的锁级别。只有ACCESS EXCLUSIVE锁可以防止一个SELECT语句。
+
+
+表锁对应的数据库操作
+===============================================================================================
+==   锁类型	              ||   对应的数据库操作
+===============================================================================================
+==   ACCESS SHARE	         ||  SELECT
+===============================================================================================
+==   ROW SHARE	             ||  SELECT FOR UPDATE,SELECT FOR SHARE
+===============================================================================================
+==   ROW EXCLUSIVE	         ||  UPDATE,DELETE,INSERT
+===============================================================================================
+==   SHARE UPDATE EXCLUSIVE	 ||  VACUUM(WITHOUT FULL),ANALYZE,CREATE INDEX CONCURRENTLY
+===============================================================================================
+==   SHARE	                 ||  CREATE INDEX
+===============================================================================================
+==   SHARE ROW EXCLUSIVE	 ||  任何命令不会自动获得
+===============================================================================================
+==   EXCLUSIVE	             ||  任何命令不会自动获得
+===============================================================================================
+==   ACCESS EXCLUSIVE      	 ||  ALTER TABLE,DROP TABLE,TRUNCATE,REINDEX,CLUSTER,VACUUM FULL
+===============================================================================================
+
+
+
+
+===================================行锁======================
+postgresql的行级锁比较简单，只有两种“共享锁”和“排它锁”
+
+
+
