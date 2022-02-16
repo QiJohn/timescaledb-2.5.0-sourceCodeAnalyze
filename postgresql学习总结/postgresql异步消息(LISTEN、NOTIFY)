@@ -1,0 +1,49 @@
+    postgresql提供了client端和其它client端通过服务器端进行消息通信的机制。这种机制是通过LISTEN和NOTIFY命令来提供异步消息通信的支持。一个client端通过LISTEN命令监听一个消息通道（也可以使用UNLISTEN取消监听），另一个client端通过NOTIFY命令向消息通道写入信息，监听端即可异步接收消息。
+
+
+————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+===============LISTEN和NOTIFY的相关命令和函数
+    LISTEN：监听消息通道
+    UNLISTEN：取消先前的监听
+    NOTIFY：发送消息到消息通道中
+    pg_notify()：与 notify 命令的功能相同，也可以发送消息到消息同道中。
+    pg_listening_channels()：调用此函数可以查询当前 session 已注册了哪些消息监听。
+
+LISTEN命令的语法格式如下：LISTEN  channel_name
+UNLISTEN命令的语法格式如下：UNLISTEN  { channel_name | *}
+NOTIFY命令的语法格式如下：NOTIFY  channel_name [, paylod]
+pg_notify函数的使用：pg_notify(channel_name,  payload)
+
+
+
+
+
+=================使用场景和案例分析
+    多个 session 可以同时监听同一个消息通道。当发送端发送一个消息时，所有监听者都可能收到此消息。
+    -- session 1
+        postgresql > listen test
+ 
+    -- session 2
+        postgresql > listen test
+ 
+    -- session 3
+        postgresql > notify test, 'hello world';
+ 
+    -- session 1
+        postgresql > select 1;
+            ?column?
+         --------------
+                1
+          (1 row)
+         Asynchronous notification "test" with payload "hello world" received from server process with PID 38445. 
+ 
+    -- session 2
+        postgresql > select 1;
+            ?column?
+         --------------
+                1
+          (1 row)
+         Asynchronous notification "test" with payload "hello world" received from server process with PID 38445. 
+
+_____________________________________________________________________________________________________________________________________________________________
+
