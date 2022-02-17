@@ -1,4 +1,22 @@
-【参考链接https://developer.aliyun.com/article/111793】
+
+
+
+====================gist索引
+————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	GiST的意思是通用的搜索树(Generalized Search Tree)。 它是一种平衡树结构的访问方法,是用户建立自定义索引的基础模板，用户只要按模板实现所要求的GiST操作类中的一系列回调函数就可以实现自定
+义的索引，而不用关心GiST索引具体是如何存储的。B-trees, R-trees和许多其它的索引模式都可以用GiST实现。
+	一个用于GiST的索引操作符类必须提供五种方法，并且还有四种可选的方法。索引的正确性由正确实现的same、consistent和union方法保证，而索引的效率（尺寸和速度）将依赖于penalty和picksplit方法。
+两种可选的方法是compress和decompress，它们允许一个索引能对内部数据使用一种不同于被其索引的数据的类型。叶子是被索引的数据类型，而其他树结点可以是任何 C 结构（但是你仍必须遵循PostgreSQL的数
+据类型规则，见用于可变尺寸数据的varlena）。如果树的内部数据类型在 SQL 层上存在，可以使用CREATE OPERATOR CLASS命令的STORAGE选项。可选的第八个方法是distance，如果操作符类希望支持有序扫描
+（最近邻搜索）就需要它。如果该操作符希望支持只用索引的扫描，则需要可选的第九个方法fetch，但compress方法被省略时不需要。
+
+
+【参考链接】
+https://blog.csdn.net/hyman_c/article/details/119202913
+https://dzone.com/articles/looking-inside-postgres-at-a-gist-index
+https://www.mengqingzhong.com/2020/10/01/postgresql-index-gist-5/
+http://www.postgres.cn/docs/12/gist-extensibility.html
+—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 
 
@@ -15,3 +33,6 @@
 
 
 
+【参考链接】
+https://developer.aliyun.com/article/111793
+https://github.com/digoal/blog/blob/master/201612/20161231_01.md?spm=a2c6h.12873639.0.0.45131bff2oUcS7&file=20161231_01.md
