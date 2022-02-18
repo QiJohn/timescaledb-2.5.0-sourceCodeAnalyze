@@ -83,7 +83,7 @@ userName@192.168.1.100:/var/lib/pgsql/backups/pg_wall_archive/%f ' ”
 
 【参考链接】
 https://zhmin.github.io/posts/postgresql-physical-replication/	
-https://developer.aliyun.com/article/640707
+https://developer.aliyun.com/article/640707 
 —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 	
 
