@@ -1,0 +1,36 @@
+1、客户端和服务端之间进行通信使用的协议
+	例如psql和数据库实例之间进行交互，传递sql语句以及返回结果之间使用的协议。
+
+【参考链接】
+https://www.bookstack.cn/read/aliyun-rds-core/6ec994b7c8b817d3.md
+
+
+
+
+
+
+2、流复制协议
+	PostgreSQL在9.0之后引入了主备流复制机制，通过流复制，备库不断的从主库同步相应的数据，并在备库apply每个WAL record，这里的流复制每次传输单位是WAL日志的record。而PostgreSQL9.0之前提供的非流
+复制方法是主库写完一个WAL日志文件后，才把WAL日志文件传送到备库，这样的方式导致主备延迟特别大。同时PostgreSQL9.0之后提供了Hot Standby，备库在应用WAL record的同时也能够提供只读服务，大大提升了用
+户体验。
+
+【参考链接】
+https://www.bookstack.cn/read/aliyun-rds-core/181ddf096b960697.md
+https://severalnines.com/database-blog/postgresql-streaming-replication-deep-dive
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
