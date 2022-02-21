@@ -99,7 +99,7 @@ https://developer.aliyun.com/article/640707
 
 
 
-示例：搭建基于流复制的异步备份
+====================================示例：搭建基于流复制的异步备份
 第一步：分别再两台机器上安装PG数据库；假设主库机器为203、备库机器为201；
 第二步：在203机器上启动主库，并新建流复制使用的数据库用户及密码，使用命令“create role replica with replication login password '123456'; alter user replica with password '123456'; ”
 	修改pg_hdb.conf，添加“host  replication  replica  0.0.0.0/0 md5”，修改postgresql.conf文件配置参数，并重加载数据库；
@@ -110,6 +110,16 @@ https://developer.aliyun.com/article/640707
 第五步：在机器203上使用默认用户postgres连接数据库，查看同步备份连接信息。
 
 
+====================================示例：搭建基于流复制的异步备份
+
+第一步：分别再两台机器上安装PG数据库；假设主库机器为203、备库机器为201；
+第二步：在203机器上启动主库，并新建流复制使用的数据库用户及密码，使用命令“create role replica with replication login password '123456'; alter user replica with password '123456'; ”
+	修改pg_hdb.conf，添加“host  replication  replica  0.0.0.0/0 md5”，修改postgresql.conf文件配置参数，并重加载数据库；
+		
+第三步：在201机器上使用pg_basebackup对主库进行备份(连接时使用的用户名、密码等为已经在主库设置好的)，并指定备份好的数据库所在的路径，切换到该路径下，修改该备份库的配置
+	文件postgresql.conf；修改postgresql.auto.conf，在参数“primary_conninfo”内添加“application_name”的相关信息
+第四步：在201机器上启动使用pg_basebackup备份好的数据库。
+第五步：在机器203上使用默认用户postgres连接数据库，查看同步备份连接信息。
 【参考链接】
 https://www.cnblogs.com/kuang17/p/12228349.html
 
