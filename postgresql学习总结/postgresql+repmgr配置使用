@@ -1,0 +1,383 @@
+repmgr安装使用
+
+node1:	192.168.5.132
+node2:	192.168.5.133
+
+
+一、通用安装，两个节点都执行：
+1.repmgr安装：
+    Install the repository definition for your distribution and PostgreSQL version：
+    curl https://dl.2ndquadrant.com/default/release/get/12/rpm | sudo bash
+    sudo yum repolist
+
+Install：
+    sudo yum -y install repmgr12
+
+
+2.安装PG12
+    yum localinstall postgresql12-*
+
+
+
+二、主库设置：
+1.初始化数据库：
+    cd /usr/pg-12/
+    initdb -D data
+
+2.修改数据库配置文件：
+[postgres@node1 data]$ vim postgresql.conf 
+    listen_addresses = '*'
+    shared_preload_libraries = 'repmgr'
+    wal_log_hints = on
+
+
+[postgres@node1 data]$ vim pg_hba.conf
+    host    all             all             192.168.5.132/32        trust
+    host    all             all             192.168.5.133/32        trust
+    host    replication             all             192.168.5.132/32        trust
+    host    replication             all             192.168.5.133/32        trust
+
+    启动数据库，使上面参数生效。注意：在clone备库的时候，没法输入密码，因此用trust。
+
+    pg_ctl -D ./ start
+
+
+3.修改配置文件：
+    vim /etc/repmgr/12/repmgr.conf
+
+    node_id=1
+    node_name=node1
+    conninfo='host=192.168.5.132 port=5432 user=postgres  dbname=postgres'
+    data_directory='/usr/pgsql-12/data'
+
+4.注册主节点
+[postgres@node1 data]$ repmgr  -f /etc/repmgr/12/repmgr.conf  primary register  
+    INFO: connecting to primary database...
+    NOTICE: attempting to install extension "repmgr"
+    NOTICE: "repmgr" extension successfully installed
+    NOTICE: primary node record (ID: 1) registered
+
+[postgres@node1 data]$ repmgr cluster show
+ ID | Name  | Role    | Status    | Upstream | Location | Priority | Timeline | Connection string                                          
+----+-------+---------+-----------+----------+----------+----------+----------+-------------------------------------------------------------
+ 1  | node1 | primary | * running |          | default  | 100      | 1        | host=192.168.5.132 port=5432 user=postgres  dbname=postgres
+
+
+三、备库设置
+1.修改配置：
+    vim /etc/repmgr/12/repmgr.conf
+
+    node_id=2
+    node_name=node2
+    conninfo='host=192.168.5.133 port=5432 user=postgres  dbname=postgres'
+    data_directory='/usr/pgsql-12/data'
+
+    一般在这里设置了password也没有生效，反而会暴露密码
+    conninfo='host=192.168.5.133 port=5432 user=postgres  dbname=postgres password=postgres'
+[postgres@localhost pgsql-12]$ repmgr cluster show
+ ID | Name  | Role    | Status    | Upstream | Location | Priority | Timeline | Connection string                                                            
+----+-------+---------+-----------+----------+----------+----------+----------+-------------------------------------------------------------------------------
+ 1  | node1 | primary | * running |          | default  | 100      | 3        | host=192.168.5.132 port=5432 user=postgres  dbname=postgres                  
+ 2  | node2 | standby |   running | node1    | default  | 100      | 3        | host=192.168.5.133 port=5432 user=postgres  dbname=postgres password=postgres
+
+2.clone备库
+[postgres@localhost pgsql-12]$ repmgr standby clone -h 192.168.5.132 -U postgres  -d postgres
+    NOTICE: destination directory "/usr/pgsql-12/data" provided
+    INFO: connecting to source node
+    DETAIL: connection string is: host=192.168.5.132 user=postgres
+    DETAIL: current installation size is 23 MB
+    NOTICE: checking for available walsenders on the source node (2 required)
+    NOTICE: checking replication connections can be made to the source server (2 required)
+    WARNING: data checksums are not enabled and "wal_log_hints" is "off"
+    DETAIL: pg_rewind requires "wal_log_hints" to be enabled
+    INFO: creating directory "/usr/pgsql-12/data"...
+    NOTICE: starting backup (using pg_basebackup)...
+    HINT: this may take some time; consider using the -c/--fast-checkpoint option
+    INFO: executing:
+    pg_basebackup -l "repmgr base backup"  -D /usr/pgsql-12/data -h 192.168.5.132 -p 5432 -U postgres -X stream 
+    NOTICE: standby clone (using pg_basebackup) complete
+    NOTICE: you can now start your PostgreSQL server
+    HINT: for example: pg_ctl -D /usr/pgsql-12/data start
+    HINT: after starting the server, you need to register this standby with "repmgr standby register"
+
+3.启动并注册
+[postgres@localhost pgsql-12]$ pg_ctl -D /usr/pgsql-12/data start
+    waiting for server to start....2020-03-08 10:43:32.861 CST [74044] LOG:  starting PostgreSQL 12.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 4.4.7 20120313 (Red Hat 4.4.7-23), 64-bit
+    2020-03-08 10:43:32.935 CST [74044] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+    2020-03-08 10:43:32.968 CST [74044] LOG:  listening on IPv6 address "::", port 5432
+    2020-03-08 10:43:32.973 CST [74044] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+    2020-03-08 10:43:33.004 CST [74044] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+    2020-03-08 10:43:33.072 CST [74044] LOG:  redirecting log output to logging collector process
+    2020-03-08 10:43:33.072 CST [74044] HINT:  Future log output will appear in directory "log".
+    done
+    server started
+    
+[postgres@localhost pgsql-12]$ repmgr -f /etc/repmgr/12/repmgr.conf  standby register
+    INFO: connecting to local node "node2" (ID: 2)
+    INFO: connecting to primary database
+    WARNING: --upstream-node-id not supplied, assuming upstream node is primary (node ID 1)
+    INFO: standby registration complete
+    NOTICE: standby node "node2" (ID: 2) successfully registered
+
+[postgres@localhost pgsql-12]$ repmgr cluster show
+ ID | Name  | Role    | Status    | Upstream | Location | Priority | Timeline | Connection string                                          
+----+-------+---------+-----------+----------+----------+----------+----------+-------------------------------------------------------------
+ 1  | node1 | primary | * running |          | default  | 100      | 1        | host=192.168.5.132 port=5432 user=postgres  dbname=postgres
+ 2  | node2 | standby |   running | node1    | default  | 100      | 1        | host=192.168.5.133 port=5432 user=postgres  dbname=postgres
+
+    如果进行级联复制，则在clone和register后面加上--upstream-node-id=2
+
+四、启动repmgrd服务，主备都执行
+1.查看服务
+[postgres@localhost pgsql-12]$ repmgr service status
+ ID | Name  | Role    | Status    | Upstream | repmgrd     | PID | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+-------------+-----+---------+--------------------
+ 1  | node1 | primary | * running |          | not running | n/a | n/a     | n/a                
+ 2  | node2 | standby |   running | node1    | not running | n/a | n/a     | n/a  
+ 
+2.添加配置，设置自动切换
+    vim /etc/repmgr/12/repmgr.conf
+
+    failover='automatic'  
+    promote_command='/usr/pgsql-12/bin/repmgr standby promote' 
+    follow_command='/usr/pgsql-12/bin/repmgr standby follow'
+
+failover参数有两个
+automatic：表示开启故障自动切换
+manual：不开启故障自动切换
+
+3.启动repmgrd服务
+[postgres@localhost pgsql-12]$ repmgrd  -f /etc/repmgr/12/repmgr.conf -d
+    [2020-03-07 18:48:58] [NOTICE] repmgrd (repmgrd 5.1.0) starting up
+    [2020-03-07 18:48:58] [INFO] connecting to database "host=192.168.5.133 port=5432 user=postgres  dbname=postgres"
+    [postgres@localhost pgsql-12]$ INFO:  set_repmgrd_pid(): provided pidfile is /tmp/repmgrd.pid
+    [2020-03-07 18:48:58] [NOTICE] starting monitoring of node "node2" (ID: 2)
+    [2020-03-07 18:48:58] [INFO] "connection_check_type" set to "ping"
+    [2020-03-07 18:48:58] [INFO] monitoring connection to upstream node "node1" (ID: 1)
+
+4查看服务
+[postgres@node1 data]$ repmgr service status
+ ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+---------+-------+---------+--------------------
+ 1  | node1 | primary | * running |          | running | 16778 | no      | n/a                
+ 2  | node2 | standby |   running | node1    | running | 74238 | no      | 1 second(s) ago 
+ 
+ 
+五、日志：
+    默认情况下，repmgr和repmgrd将日志输出写入 STDERR。可以指定备用日志目标（文件或syslog）。
+
+注意：
+    即使配置了另一个日志目标 ，repmgr应用程序本身也会继续将日志输出写入到STDERR日志中，否则，由命令行操作产生的任何输出都会“消失”在日志中。
+
+在配置文件添加日志文件路径：
+[postgres@node1 repmgr]$ vim /etc/repmgr/12/repmgr.conf
+    log_file='/var/log/repmgr/repmgrd.log'
+
+添加文件：
+[root@node1 ~]# vim /etc/logrotate.d/repmgr
+/var/log/repmgr/repmgrd.log {
+        missingok
+        compress
+        rotate 52
+        maxsize 100M
+        weekly
+        create 0600 postgres postgres
+        postrotate
+            /usr/bin/killall -HUP repmgrd
+        endscript
+}
+
+
+六、添加witness节点
+[postgres@localhost pgsql-12]$ repmgr witness register -h 192.168.5.133
+    INFO: connecting to witness node "node2" (ID: 2)
+    ERROR: provided node is a standby
+    HINT: a witness node must run on an independent primary server
+
+七、命令使用
+[postgres@localhost pgsql-12]$ repmgr --help
+    repmgr: replication management tool for PostgreSQL
+    Usage:
+        repmgr [OPTIONS] primary {register|unregister}
+        repmgr [OPTIONS] standby {register|unregister|clone|promote|follow|switchover}
+        repmgr [OPTIONS] node    {status|check|rejoin|service}
+        repmgr [OPTIONS] cluster {show|event|matrix|crosscheck|cleanup}
+        repmgr [OPTIONS] witness {register|unregister}
+        repmgr [OPTIONS] service {status|pause|unpause}
+        repmgr [OPTIONS] daemon  {start|stop}
+
+1）查看节点状态及信息
+[postgres@localhost pgsql-12]$ repmgr node status
+    Node "node2":
+        PostgreSQL version: 12.4
+        Total data size: 23 MB
+        Conninfo: host=192.168.5.133 port=5432 user=postgres  dbname=postgres
+        Role: standby
+        WAL archiving: off
+        Archive command: (none)
+        Replication connections: 0 (of maximal 10)
+        Replication slots: 0 physical (of maximal 10; 0 missing)
+        Upstream node: node1 (ID: 1)
+        Replication lag: 0 seconds
+        Last received LSN: 0/5000BF0
+        Last replayed LSN: 0/5000BF0
+		
+2）查看集群状态
+[postgres@node1 repmgr]$ repmgr daemon status
+ ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+---------+-------+---------+--------------------
+ 1  | node1 | primary | * running |          | running | 16778 | no      | n/a                
+ 2  | node2 | standby |   running | node1    | running | 74238 | no      | 1 second(s) ago    
+
+3）停止repmgrd
+配置repmgr.conf文件，添加命令：
+    repmgrd_service_start_command ='service repmgr-12 start'
+    repmgrd_service_stop_command ='service repmgr-12 stop'
+
+执行停止：
+[postgres@localhost pgsql-12]$ repmgr daemon stop
+    NOTICE: executing: "service repmgr-12 stop"
+    ERROR: repmgrd does not appear to have stopped after 15 seconds
+    HINT: use "repmgr service status" to confirm that repmgrd was successfully started
+--但是：service repmgr-12 stop 没有停止
+
+换一个配置命令：
+    repmgrd_service_stop_command ='repmgr node service --list-actions --action=stop'
+
+重新执行：
+[postgres@localhost pgsql-12]$ repmgr daemon stop
+    NOTICE: executing: "repmgr node service --list-actions --action=stop"
+    ERROR: repmgrd does not appear to have stopped after 15 seconds
+    HINT: use "repmgr service status" to confirm that repmgrd was successfully started
+
+仍然没有停止掉
+
+[postgres@node1 repmgr]$ repmgr service status
+ ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+---------+-------+---------+--------------------
+ 1  | node1 | primary | * running |          | running | 16778 | no      | n/a                
+ 2  | node2 | standby |   running | node1    | running | 74238 | no      | 1 second(s) ago 
+
+目前就通过pg_ctl停止数据库和kill来杀repmgrd进程
+ 
+4）暂停集群监控
+[postgres@localhost pgsql-12]$ repmgr service pause
+    NOTICE: node 1 (node1) paused
+    NOTICE: node 2 (node2) paused
+[postgres@localhost pgsql-12]$ repmgr daemon status
+ ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+---------+-------+---------+--------------------
+ 1  | node1 | standby |   running | node2    | running | 27253 | yes     | 1 second(s) ago    
+ 2  | node2 | primary | * running |          | running | 86308 | yes     | n/a                
+[postgres@localhost pgsql-12]$ 
+ 
+七、验证
+1）关闭repmgr进程，有什么影响？
+    repmgr不是进程，是一个插件，没有可以停止的地方
+
+2）关闭repmgrd进程，有什么影响？
+    只是repmgrd进程掉了，数据库不会有影响。流复制集群正常~
+
+3）如何重新加载repmgr.conf文件
+杀掉进程，重新启动：
+[postgres@localhost pgsql-12]$ kill 74238
+[postgres@localhost pgsql-12]$ [2020-03-07 19:44:15] [NOTICE] TERM signal received
+    [2020-03-07 19:44:15] [INFO] repmgrd terminating...
+
+[postgres@localhost pgsql-12]$ repmgr daemon status
+ ID | Name  | Role    | Status    | Upstream | repmgrd     | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+-------------+-------+---------+--------------------
+ 1  | node1 | primary | * running |          | running     | 16778 | no      | n/a                
+ 2  | node2 | standby |   running | node1    | not running | n/a   | n/a     | n/a                
+[postgres@localhost pgsql-12]$ repmgrd -d
+    [2020-03-07 19:44:48] [NOTICE] redirecting logging output to "/var/log/repmgr/repmgrd.log"
+
+4）如果模拟切换？
+    手动停止主数据库
+
+主库执行：
+[postgres@node1 data]$ pg_ctl -D ./ stop
+    waiting for server to shut down.... done
+    server stopped
+    [2020-09-29 17:22:34] [WARNING] unable to ping "host=192.168.5.132 port=5432 user=postgres  dbname=postgres"
+    [2020-09-29 17:22:34] [DETAIL] PQping() returned "PQPING_NO_RESPONSE"
+    [2020-09-29 17:22:34] [WARNING] connection to node "node1" (ID: 1) lost
+    [2020-09-29 17:22:34] [DETAIL] 
+    FATAL:  terminating connection due to administrator command
+    server closed the connection unexpectedly
+        This probably means the server terminated abnormally
+        before or while processing the request.
+
+    [2020-09-29 17:22:34] [INFO] attempting to reconnect to node "node1" (ID: 1)
+    [2020-09-29 17:22:34] [ERROR] connection to database failed
+    [2020-09-29 17:22:34] [DETAIL] 
+    could not connect to server: Connection refused
+        Is the server running on host "192.168.5.132" and accepting
+        TCP/IP connections on port 5432?
+
+    [2020-09-29 17:22:34] [DETAIL] attempted to connect using:
+        user=postgres dbname=postgres host=192.168.5.132 port=5432 connect_timeout=2 fallback_application_name=repmgr
+    [2020-09-29 17:22:34] [WARNING] reconnection to node "node1" (ID: 1) failed
+    [2020-09-29 17:22:34] [WARNING] unable to connect to local node
+    [2020-09-29 17:22:34] [INFO] checking state of node 1, 1 of 6 attempts
+    [2020-09-29 17:22:34] [WARNING] unable to ping "user=postgres dbname=postgres host=192.168.5.132 port=5432 connect_timeout=2 fallback_application_name=repmgr"
+
+错误会一直报。
+
+
+备库查询状态，已经切换过来，时间可以设置重试、确认的时间和次数，默认6次，每次8s间隔：
+[postgres@localhost pgsql-12]$ repmgr daemon status
+ ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+---------+-------+---------+--------------------
+ 1  | node1 | primary | - failed  | ?        | n/a     | n/a   | n/a     | n/a                
+ 2  | node2 | primary | * running |          | running | 79388 | no      | n/a 
+
+启动主库，变为双主：
+[postgres@localhost data]$ repmgr daemon status
+ ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+---------+-------+---------+--------------------
+ 1  | node1 | primary | ! running |          | running | 16778 | no      | n/a                
+ 2  | node2 | primary | * running |          | running | 79388 | no      | n/a 
+ 
+
+此时停止主节点，使用node rejoin的方式加入：
+
+需要在repmgr.conf中添加配置，才能启动数据库，不需要重启repmgrd：
+service_start_command  = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data start'
+service_stop_command    = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data stop'
+service_restart_command = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data restart'
+service_reload_command  = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data reload' 
+
+--先进行rewind
+repmgr node rejoin -h192.168.5.132 -Upostgres -dpostgres --force-rewind --dry-run --verbose
+--然后执行加入
+repmgr node rejoin -h192.168.5.133 -Upostgres -dpostgres --force-rewind --verbose
+
+[postgres@node1 pgsql-12]$ repmgr node rejoin -h192.168.5.133 -Upostgres -dpostgres --force-rewind --verbose
+    INFO: checking for package configuration file "/etc/repmgr/12/repmgr.conf"
+    INFO: configuration file found at: "/etc/repmgr/12/repmgr.conf"
+    INFO: prerequisites for using pg_rewind are met
+    INFO: 0 files copied to "/tmp/repmgr-config-archive-node1"
+    NOTICE: executing pg_rewind
+    DETAIL: pg_rewind command is "pg_rewind -D '/usr/pgsql-12/data' --source-server='host=192.168.5.133 port=5432 user=postgres  dbname=postgres'"
+    pg_rewind: servers diverged at WAL location 0/3009918 on timeline 1
+    pg_rewind: no rewind required
+    NOTICE: 0 files copied to /usr/pgsql-12/data
+    INFO: directory "/tmp/repmgr-config-archive-node1" deleted
+    NOTICE: setting node 1's upstream to node 2
+    WARNING: unable to ping "host=192.168.5.132 port=5432 user=postgres  dbname=postgres"
+    DETAIL: PQping() returned "PQPING_NO_RESPONSE"
+    NOTICE: starting server using "/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data start"
+    INFO: node "node1" (ID: 1) is pingable
+    INFO: node "node1" (ID: 1) has attached to its upstream node
+    NOTICE: NODE REJOIN successful
+    DETAIL: node 1 is now attached to node 2
+
+[postgres@localhost pgsql-12]$ repmgr daemon status
+ ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
+----+-------+---------+-----------+----------+---------+-------+---------+--------------------
+ 1  | node1 | standby |   running | node2    | running | 27253 | no      | 0 second(s) ago    
+ 2  | node2 | primary | * running |          | running | 86308 | no      | n/a 
+
+
+
