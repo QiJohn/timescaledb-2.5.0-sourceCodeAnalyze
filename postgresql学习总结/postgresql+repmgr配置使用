@@ -349,9 +349,9 @@ service_restart_command = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data restar
 service_reload_command  = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data reload' 
 
 --先进行rewind，向备库rejoin主库
-repmgr node rejoin -h192.168.5.133 -Upostgres -dpostgres --force-rewind --dry-run --verbose  -f /etc/logrotate.d/repmgr
+repmgr node rejoin -h192.168.5.133 -Upostgres -p5432 -dpostgres --force-rewind --dry-run --verbose  -f /etc/logrotate.d/repmgr
 --然后执行加入
-repmgr node rejoin -h192.168.5.133 -Upostgres -dpostgres --force-rewind --verbose -f /etc/logrotate.d/repmgr
+repmgr node rejoin -h192.168.5.133 -Upostgres -p5432 -dpostgres --force-rewind --verbose -f /etc/logrotate.d/repmgr
 
 [postgres@node1 pgsql-12]$ repmgr node rejoin -h192.168.5.133 -Upostgres -dpostgres --force-rewind --verbose
     INFO: checking for package configuration file "/etc/repmgr/12/repmgr.conf"
