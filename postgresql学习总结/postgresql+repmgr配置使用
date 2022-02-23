@@ -332,7 +332,7 @@ manual：不开启故障自动切换
  1  | node1 | primary | - failed  | ?        | n/a     | n/a   | n/a     | n/a                
  2  | node2 | primary | * running |          | running | 79388 | no      | n/a 
 
-启动主库，变为双主：
+启动主库，变为双主：【这种再次启动主库的方式存在问题】
 [postgres@localhost data]$ repmgr daemon status
  ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
 ----+-------+---------+-----------+----------+---------+-------+---------+--------------------
@@ -340,38 +340,19 @@ manual：不开启故障自动切换
  2  | node2 | primary | * running |          | running | 79388 | no      | n/a 
  
 
-此时停止主节点，使用node rejoin的方式加入：
+此时停止主节点，使用node rejoin的方式加入：【这种再次启动主库的方式正确】
 
-需要在repmgr.conf中添加配置，才能启动数据库，不需要重启repmgrd：
-service_start_command  = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data start'
-service_stop_command    = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data stop'
-service_restart_command = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data restart'
-service_reload_command  = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data reload' 
+	需要在repmgr.conf中添加配置，才能启动数据库，不需要重启repmgrd：
+	service_start_command  = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data start'
+	service_stop_command    = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data stop'
+	service_restart_command = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data restart'
+	service_reload_command  = '/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data reload' 
 
---先进行rewind，向备库rejoin主库
-repmgr node rejoin -h192.168.5.133 -Upostgres -p5432 -dpostgres --force-rewind --dry-run --verbose  -f /etc/logrotate.d/repmgr
---然后执行加入
-repmgr node rejoin -h192.168.5.133 -Upostgres -p5432 -dpostgres --force-rewind --verbose -f /etc/logrotate.d/repmgr
+	--先进行rewind，向备库rejoin主库
+	repmgr node rejoin -h192.168.5.133 -Upostgres -p5432 -dpostgres --force-rewind --dry-run --verbose  -f /etc/logrotate.d/repmgr
+	--然后执行加入
+	repmgr node rejoin -h192.168.5.133 -Upostgres -p5432 -dpostgres --force-rewind --verbose -f /etc/logrotate.d/repmgr
 
-[postgres@node1 pgsql-12]$ repmgr node rejoin -h192.168.5.133 -Upostgres -dpostgres --force-rewind --verbose
-    INFO: checking for package configuration file "/etc/repmgr/12/repmgr.conf"
-    INFO: configuration file found at: "/etc/repmgr/12/repmgr.conf"
-    INFO: prerequisites for using pg_rewind are met
-    INFO: 0 files copied to "/tmp/repmgr-config-archive-node1"
-    NOTICE: executing pg_rewind
-    DETAIL: pg_rewind command is "pg_rewind -D '/usr/pgsql-12/data' --source-server='host=192.168.5.133 port=5432 user=postgres  dbname=postgres'"
-    pg_rewind: servers diverged at WAL location 0/3009918 on timeline 1
-    pg_rewind: no rewind required
-    NOTICE: 0 files copied to /usr/pgsql-12/data
-    INFO: directory "/tmp/repmgr-config-archive-node1" deleted
-    NOTICE: setting node 1's upstream to node 2
-    WARNING: unable to ping "host=192.168.5.132 port=5432 user=postgres  dbname=postgres"
-    DETAIL: PQping() returned "PQPING_NO_RESPONSE"
-    NOTICE: starting server using "/usr/pgsql-12/bin/pg_ctl -D /usr/pgsql-12/data start"
-    INFO: node "node1" (ID: 1) is pingable
-    INFO: node "node1" (ID: 1) has attached to its upstream node
-    NOTICE: NODE REJOIN successful
-    DETAIL: node 1 is now attached to node 2
 
 [postgres@localhost pgsql-12]$ repmgr daemon status
  ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
