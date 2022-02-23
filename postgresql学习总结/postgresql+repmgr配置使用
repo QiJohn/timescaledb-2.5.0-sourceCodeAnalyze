@@ -361,5 +361,29 @@ manual：不开启故障自动切换
  2  | node2 | primary | * running |          | running | 86308 | no      | n/a 
 
 
+
+====对每个库进行实时检查，即在每个节点库上都允许命令：repmgr node check -f /home/zhouqi/data/pg_data/repmgr.conf
+	[lightdb@localhost ~]$ repmgr node check -f /home/lightdb/lightdb-x/13.3-21.2/etc/repmgr/repmgr.conf
+	Node "10.19.36.10-defaultcluster":
+    	Server role: OK (node is standby)
+    	Replication lag: OK (0 seconds)
+    	WAL archiving: OK (2 pending archive ready files)
+    	Upstream connection: OK (node "10.19.36.10-defaultcluster" (ID: 1) is attached to expected upstream node "10.19.36.9-defaultcluster" (ID: 2))
+    	Downstream servers: OK (this node has no downstream nodes)
+    	Replication slots: OK (node has no physical replication slots)
+    	Missing physical replication slots: OK (node has no missing physical replication slots)
+    	Configured data directory: OK (configured "data_directory" is "/home/lightdb/data/defaultCluster")
+
+====查看集群节点间连通性(任意节点上执行“repmgr cluster crosscheck -f /home/lightdb/lightdb-x/13.3-21.2/etc/repmgr/repmgr.conf”，包含所有节点的信息)
+	[lightdb@localhost ~]$ repmgr cluster crosscheck -f /home/lightdb/lightdb-x/13.3-21.2/etc/repmgr/repmgr.conf
+		INFO: connecting to database
+	 	Name                       | ID | 1 | 2
+		----------------------------+----+---+---
+ 		10.19.36.10-defaultcluster | 1  | * | * 
+ 		10.19.36.9-defaultcluster  | 2  | * | *
+
+
+
 【参考链接】
 https://bbs.kingbase.com.cn/thread-1245-1-1.html
+https://blog.51cto.com/zhjh256/4438481
