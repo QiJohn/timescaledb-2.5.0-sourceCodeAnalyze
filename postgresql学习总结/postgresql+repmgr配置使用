@@ -380,4 +380,5 @@ repmgr node rejoin -h192.168.5.133 -Upostgres -p5432 -dpostgres --force-rewind -
  2  | node2 | primary | * running |          | running | 86308 | no      | n/a 
 
 
-
+【参考链接】
+https://bbs.kingbase.com.cn/thread-1245-1-1.html
