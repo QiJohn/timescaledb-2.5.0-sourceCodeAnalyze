@@ -383,6 +383,15 @@ manual：不开启故障自动切换
  		10.19.36.9-defaultcluster  | 2  | * | *
 
 
+====卸载备库节点
+	[zhouqi@node203 pg_data]$ repmgr standby unregister  --node-id=节点号
+
+====卸载主库节点
+	[zhouqi@node203 pg_data]$ repmgr primary unregister  --node-id=节点号
+
+
+
+
 
 【参考链接】
 https://bbs.kingbase.com.cn/thread-1245-1-1.html
