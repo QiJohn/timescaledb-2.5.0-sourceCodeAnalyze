@@ -1,0 +1,11 @@
+    在postgresql配置文件中，成本因子random_page_cost、cpu_index_cost、cpu_operator_cost、seq_page_cost、cpu_tuple_cost等成本因子参数都需要人为进行设置，且这些
+参数与其实际所运行的机器高度相关，因此需要结合实际运行的机器对这些参数进行人为的校准（即通过在机器上进行额外的小测试并依据公式获得最佳参数设置）。
+
+
+
+
+【参考链接】
+https://www.cnblogs.com/pg-libs/p/6225090.html
+https://www.cnblogs.com/pg-libs/p/6305622.html
+
+
