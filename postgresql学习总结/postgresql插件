@@ -14,7 +14,7 @@ PgBouncer为客户端创建一个新的数据库连接，或者重用一个现�
 4、流复制主备自动切换插件：repmgr
 
 5、外部数据封装器插件：postgres_fdw
-    postgres_fdw模块提供外部数据封装器的功能，PostgreSQL通过它可以访问存储在其它机器上的postgresql数据库。
+    postgres_fdw模块提供外部数据封装器的功能，PostgreSQL通过它可以访问存储在其它机器上的postgresql数据库。例如可以通过该插件实现分库
 
 
 
