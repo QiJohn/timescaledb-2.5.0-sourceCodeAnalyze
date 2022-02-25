@@ -8,6 +8,36 @@
 
 
 
+======示例：使用postgres-fdw插件实现分库功能
+===主库：
+    建立涉及的数据库：create database master with owner 用户名；
+    建立主表：create table tbl_user (id int, info text, logdate date not null) PARTITION BY RANGE (logdate);
+    建立外部数据库的server：
+        CREATE SERVER s0   
+        FOREIGN DATA WRAPPER postgres_fdw 
+        OPTIONS (host '分库ip', port '监听端口号', dbname '分库名称');
+        
+    建立连接分库进行认证用的mapping：
+        CREATE USER MAPPING FOR 用户名   
+        SERVER s0 
+        OPTIONS (user '用户名', password '密码');
+        
+    建立与分库关联的外部表：
+        CREATE FOREIGN TABLE tbl_user_0 (id int not null, info text, logdate date not null) 
+        SERVER s0 
+        OPTIONS (schema_name 'public', table_name '分库表名');
+    
+    将外部表作为分区挂载到主表上：alter table tbl_user attach partition tbl_user_0 FOR VALUES FROM ('2020-01-01') TO ('2022-01-01');
+    
+    
+===分库：首先对分库的pg_hba.conf、postgresql.conf文件进行配置
+    建立涉及的数据库：create database shard with owner 用户名；
+    建立主表：create table tbl_user (id int, info text, logdate date not null)；
+
+
+===插入数据：
+    向主库插入符合分库时间约束的数据都会通过主库的外部表被插入到分库中；直接插入到分库的数据，可以在主库上查看。
+
 
 【参考链接】
 https://www.cnblogs.com/butterfly100/p/9034281.html
