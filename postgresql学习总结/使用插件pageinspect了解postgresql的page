@@ -1,0 +1,28 @@
+    pageinspect是postgresql源码自带的插件，用于对PG的page页面进行解析。使用该插件可以对page中存储的数据进行查看，同时结合其它插件，例如gist索引插件、gin索引插件，
+就可以解析出page中有关索引的内容。
+例如：
+    ==SELECT * FROM page_header(get_raw_page('表名', 0));
+        可以查看该表使用的page，以及page中头字段域中存储的内容
+        
+    ==SELECT * FROM heap_page_items(get_raw_page('表名', 0));
+        可以查看与page相关的heap中存储的数据内容
+        
+    ==SELECT * FROM gin_page_opaque_info(get_raw_page('gin索引名称', 2));
+        返回有关一个GIN索引不透明区域的信息，如页面类型等
+        
+    ==SELECT * FROM gin_leafpage_items(get_raw_page('gin索引名称', 2));
+        返回有关存储在一个 GIN叶子页面中的数据的信息
+    
+
+
+
+
+
+
+
+
+【参考链接】
+https://developer.aliyun.com/article/2291
+http://postgres.cn/docs/12/pageinspect.html
+https://www.mengqingzhong.com/2020/10/01/postgresql-index-gin-7/
+
