@@ -332,7 +332,8 @@ manual：不开启故障自动切换
  1  | node1 | primary | - failed  | ?        | n/a     | n/a   | n/a     | n/a                
  2  | node2 | primary | * running |          | running | 79388 | no      | n/a 
 
-启动主库，变为双主：【这种再次启动主库的方式存在问题】
+启动主库，变为双主：【这种再次启动主库的方式存在问题。由于此前主库挂掉，备库升级为主库了，之后直接使用“pg_ctl  start”方式启动主库会导致原始主库也以主库的方式启动，此
+时出现多主库问题，这种现象用术语“脑裂”】
 [postgres@localhost data]$ repmgr daemon status
  ID | Name  | Role    | Status    | Upstream | repmgrd | PID   | Paused? | Upstream last seen
 ----+-------+---------+-----------+----------+---------+-------+---------+--------------------
