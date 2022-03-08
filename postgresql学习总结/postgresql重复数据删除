@@ -1,0 +1,58 @@
+==================================重复数据删除方法一===============================================================
+    去重的方法一般是找到重复数据中的一条，以某一唯一条件去掉其他重复值。PG中也有一个唯一字段ctid，也可以根据此来做,如果表里设置了oid,数据量不大的情况下也可以。当然如果
+表中有唯一的序列值，就更方便了
+    postgres=# create table test(id int,name varchar);
+    CREATE TABLE
+    postgres=# insert into test values (1,'kenyon');
+    INSERT 0 1
+    postgres=# insert into test values (1,'kenyon');
+    INSERT 0 1
+    postgres=# insert into test values (1,'kenyon');
+    INSERT 0 1
+    postgres=# insert into test values (2,'kenyon_test');
+    INSERT 0 1
+    postgres=# insert into test values (2,'kenyon_test');
+    INSERT 0 1
+    postgres=# insert into test values (3,'test');
+    INSERT 0 1
+    postgres=# insert into test values (5,'test');
+    INSERT 0 1
+    postgres=# insert into test values (5,'jackson');
+    INSERT 0 1
+
+    postgres=# select ctid,* from test;
+    ctid  | id |    name     
+    -------+----+-------------
+     (0,1) |  1 | kenyon
+     (0,2) |  1 | kenyon
+     (0,3) |  1 | kenyon
+     (0,4) |  2 | kenyon_test
+     (0,5) |  2 | kenyon_test
+     (0,6) |  3 | test
+     (0,7) |  5 | test
+     (0,8) |  5 | jackson
+    (8 rows)
+    
+查询要保留的数据,以min(ctid)或max(ctid)为准
+    postgres=# select ctid,* from test where ctid in (select min(ctid) from test group by id);
+     ctid  | id |    name     
+    -------+----+-------------
+    (0,1) |  1 | kenyon
+    (0,4) |  2 | kenyon_test
+    (0,6) |  3 | test
+    (0,7) |  5 | test
+    (4 rows)
+删除重复数据,查看最后结果
+    postgres=# delete from test where ctid not in (select min(ctid) from test group by id);
+    DELETE 4
+    postgres=# select ctid,* from test;
+    ctid  | id |    name     
+    -------+----+-------------
+    (0,1) |  1 | kenyon
+    (0,4) |  2 | kenyon_test
+    (0,6) |  3 | test
+    (0,7) |  5 | test
+    (4 rows)
+如果表中已经有标明唯一的序列主键值，可以把该值替换上述的ctid直接删除。
+
+
