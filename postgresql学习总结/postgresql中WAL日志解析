@@ -1,0 +1,21 @@
+解析WAL日志的方式有很工具，如PG自带的工具pg_waldump，翰高数据开发的开源工具walminer。
+
+
+===========使用pg_waldump解析：
+  例如直接解析WAL文件：pg_waldump  ~/data/pg_data/data01/pg_wal/00000001000000000000009F
+  
+  
+  
+
+
+==========使用walminer解析：【参考链接https://gitee.com/movead/XLogMiner】
+  第一步：安装，安装成功后作为PG的插件存在
+  第二步：psql连接PG数据库实例，使用命令“create extension walminer”加载插件
+  第三步：加载WAL日志文件，例如使用命令“select walminer_wal_add('WAL日志文件存放的路径');”
+  第四步：解析WAL日志文件，例如使用命令“select wal2sql();”
+  第五步：查看解析后WAL日志记录对应的SQL语句内容，使用命令“select * from walminer_contents;”
+
+
+
+
+
