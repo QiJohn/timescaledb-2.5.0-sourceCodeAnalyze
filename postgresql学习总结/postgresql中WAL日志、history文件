@@ -1,0 +1,58 @@
+解析WAL日志的方式有很工具，如PG自带的工具pg_waldump，翰高数据开发的开源工具walminer。
+
+===========使用pg_waldump解析========================================================================================================================
+  例如直接解析WAL文件：pg_waldump  ~/data/pg_data/data01/pg_wal/00000001000000000000009F
+    rmgr: Heap        len (rec/tot):     64/   268, tx:    7134486, lsn: 0/FAFEBE50, prev 0/FAFEBE18, desc: INSERT off 5, blkref #0: rel 1663/13287/23713247 blk 0 FPW
+    rmgr: Transaction len (rec/tot):     46/    46, tx:    7134486, lsn: 0/FAFEBF60, prev 0/FAFEBE50, desc: COMMIT 2021-06-08 18:42:16.028620 CST
+    rmgr: Standby     len (rec/tot):     50/    50, tx:          0, lsn: 0/FAFEBF90, prev 0/FAFEBF60, desc: RUNNING_XACTS nextXid 7134487 latestCompletedXid 7134486 oldestRunningXid 7134487
+    rmgr: Standby     len (rec/tot):     50/    50, tx:          0, lsn: 0/FAFEBFC8, prev 0/FAFEBF90, desc: RUNNING_XACTS nextXid 7134487 latestCompletedXid 7134486 oldestRunningXid 7134487
+    rmgr: XLOG        len (rec/tot):    106/   106, tx:          0, lsn: 0/FAFEC018, prev 0/FAFEBFC8, desc: CHECKPOINT_ONLINE redo 0/FAFEBFC8; tli 1; prev tli 1; fpw true; xid 0:7134487; oid 23721430; multi 1; offset 0; oldest xid 563 in DB 1; oldest multi 1 in DB 1; oldest/newest commit timestamp xid: 0/0; oldest running xid 7134487; online
+    rmgr: Standby     len (rec/tot):     50/    50, tx:          0, lsn: 0/FAFEC088, prev 0/FAFEC018, desc: RUNNING_XACTS nextXid 7134487 latestCompletedXid 7134486 oldestRunningXid 7134487
+ 
+ 解析出来的内容各字段的意思为：
+ rmgr: Heap
+    PostgreSQL内部将WAL日志归类到20多种不同的资源管理器。这条WAL记录所属资源管理器为Heap,即堆表。除了Heap还有Btree,Transaction等。
+  len (rec/tot): 59/    59
+    WAL记录的总长度是59字节，其中main data部分是59字节(只计数main data可能并不合理，本文的后面会有说明)。
+  tx: 7102114
+    事务号
+  lsn: 0/8E459DB0
+    本WAL记录的LSN
+  prev 0/8E459D78
+    上条WAL记录的LSN
+  desc: INSERT+INIT off 1
+    这是一条insert类型的记录(每个资源管理器最多包含16种不同的WAL记录类型)，tuple在page中的位置为1。
+  blkref #0: rel 1663/13287/23713247 blk 0
+    引用的第一个page所属的对表文件为1663/13287/23713247,块号为0(即ctid的前半部分)。通过oid2name可以查到是哪个堆表。
+
+
+
+
+==========使用walminer解析：【参考链接https://gitee.com/movead/XLogMiner】==============================================================================
+  第一步：安装，安装成功后作为PG的插件存在
+  第二步：psql连接PG数据库实例，使用命令“create extension walminer”加载插件
+  第三步：加载WAL日志文件，例如使用命令“select walminer_wal_add('WAL日志文件存放的路径');”
+  第四步：解析WAL日志文件，例如使用命令“select wal2sql();”
+  第五步：查看解析后WAL日志记录对应的SQL语句内容，使用命令“select * from walminer_contents;”
+
+
+
+
+
+
+=============================================================================history文件============================================================
+【参考链接 http://mysql.taobao.org/monthly/2015/07/03/， https://blog.csdn.net/weixin_39540651/article/details/111239341】    
+    该history文件所在的位置由postgresql.conf进行配置，例如“archive_command = 'cp %p /home/zhouqi/data/pg_data/archive_data01/%f'”。
+    “时间线”的概念：每当数据库完成归档恢复后，创建一个新的时间线用来区别数据库恢复之前和之后继续运行生成的WAL文件。WAL文件名由时间线和日志序号组成，当数据库在从
+包含多个时间线的归档中恢复时，这些history文件帮助系统选取正确的WAL文件。
+    history文件的内容：例如
+        1       0/9C0000A0      before 2000-01-01 08:00:00+08
+        2       0/9F0000A0      before 2000-01-01 08:00:00+08
+        3       0/A00000A0      before 2000-01-01 08:00:00+08
+    文件中第一个字段为时间线标识，第二个字段为wal文件LSN标识， 第三各字段为时间说明
+
+
+
+
+
+
