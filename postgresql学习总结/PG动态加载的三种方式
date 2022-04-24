@@ -1,0 +1,45 @@
+ PG在加载动态库时，总体而言分为三类    【参考链接https://developer.aliyun.com/article/8235】
+1、自动加载
+  在调用动态库涉及的函数时会自动加载这些库，无需额外的配置和操作
+
+
+2、预加载
+  1、为什么需要预加载
+      有些动态库涉及到这些内容：(1)使用了PG的hook；(2)需要初始化共享内存（由于当前PG不支持共享内存的动态创建）；(3)需要fork work process
+
+  2、预加载的时刻
+      2.1、数据库启动时自动加载的动态库：需初始化共享内存的动态库、需要fork work process的动态库
+      2.2、数据库启动后，需独立LOAD的动态库：使用了PG的hook，但是该动态库没有对应的数据库函数来触发自动LOAD，例如：auto_explain，pg_plan_hint
+
+  3、预加载方式
+      3.1、数据库启动时自动加载。使用PG配置文件中的“shared_preload_libraries”参数控制，如果该参数没有配置路径，只有SO的名称，则自动在“dynamic_library_path”参数提供的路径中查找对应的SO文件
+      3.2、数据库启动后，用户与数据库建立连接时加载。该种加载方式有两个参数控制
+          3.2.1、普通用户可以修改的参数“local_preload_libraries”
+                  ①如果在该参数中配置的SO文件没有路径，只有名称，则自动到“$libdir/plugins”目录下查找对应的SO文件
+                  ②该参数配置的路径只能位于"$libdir/plugins"下。
+          3.2.2、超级用户可以修改的参数“session_preload_libraries”
+                  ①如果在该参数中配置的SO文件没有路径，只有名称，则自动到“dynamic_library_path”目录下查找对应的SO文件
+                  ②该参数配置的路径可以是任意目录
+
+
+3、LOAD语句加载
+  1、语法
+      LOAD 'xxxxx'
+
+  2、普通用户
+      ①如果没有路径，只有名称，则自动到“$libdir/plugins”目录下查找对应的SO文件
+      ②路径只能位于"$libdir/plugins"下
+
+  3、超级用户
+      ①如果没有路径，只有名称，则自动到“dynamic_library_path”目录下查找对应的SO文件
+      ②路径可以是任意目录
+
+
+
+
+
+
+
+
+
+
