@@ -1,0 +1,101 @@
+/* 【文件所在路径：timescaledb/src/cross_module_fn.h】
+*  要定义跨模块函数，请将其添加到此结构中，如果是默认版本则添加到cross_module_fn.c中的ts_cm_functions_default，并将覆盖的版本添加到tsl/src/init.c中的tsl_cm_functions
+*  这将允许函数以“ts_cm_functions-><函数名>”的形式被调用
+*/
+typedef struct CrossModuleFunctions
+{
+	void (*add_tsl_telemetry_info)(JsonbParseState **parse_state);
+
+	PGFunction policy_compression_add;
+	PGFunction policy_compression_remove;
+	PGFunction policy_recompression_proc;
+	PGFunction policy_refresh_cagg_add;
+	PGFunction policy_refresh_cagg_proc;
+	PGFunction policy_refresh_cagg_remove;
+	PGFunction policy_reorder_add;
+	PGFunction policy_reorder_proc;
+	PGFunction policy_reorder_remove;
+	PGFunction policy_retention_add;
+	PGFunction policy_retention_proc;
+	PGFunction policy_retention_remove;
+
+	.....
+  
+} CrossModuleFunctions;
+
+extern TSDLLEXPORT CrossModuleFunctions *ts_cm_functions;   //声明跨模块函数的覆盖版本，定义在“timescaledb/src/cross_module_fn.c”中
+extern TSDLLEXPORT CrossModuleFunctions ts_cm_functions_default;   //声明跨模块函数的默认版本，定义在“timescaledb/src/init.c”
+
+
+
+
+/* 【文件所在路径：timescaledb/src/cross_module_fn.c】
+*  定义跨模块函数的默认值, 如果子模块未激活，使用 cm 函数之一将引发异常
+*/
+TSDLLEXPORT CrossModuleFunctions ts_cm_functions_default = {
+	.add_tsl_telemetry_info = add_tsl_telemetry_info_default,
+	.create_upper_paths_hook = NULL,
+	.set_rel_pathlist_dml = NULL,
+	.set_rel_pathlist_query = NULL,
+	.set_rel_pathlist = NULL,
+	.ddl_command_start = NULL,
+	.ddl_command_end = NULL,
+	.sql_drop = NULL,
+	.process_altertable_cmd = NULL,
+	.process_rename_cmd = NULL,
+
+	/* gapfill */
+	.gapfill_marker = error_no_default_fn_pg_community,
+	.gapfill_int16_time_bucket = error_no_default_fn_pg_community,
+	.gapfill_int32_time_bucket = error_no_default_fn_pg_community,
+  
+	.......
+  
+	.chunk_create_replica_table = error_no_default_fn_pg_community,
+	.hypertable_distributed_set_replication_factor = error_no_default_fn_pg_community,
+	.update_compressed_chunk_relstats = update_compressed_chunk_relstats_default,
+};
+
+TSDLLEXPORT CrossModuleFunctions *ts_cm_functions = &ts_cm_functions_default;
+
+
+
+/* 【文件所在路径：timescaledb/src/init.c】
+*  模块初始化函数，设置 ts_cm_functions 指向 tsl_cm_functions
+*/
+
+CrossModuleFunctions tsl_cm_functions = {
+	.add_tsl_telemetry_info = tsl_telemetry_add_info,
+
+	.create_upper_paths_hook = tsl_create_upper_paths_hook,
+	.set_rel_pathlist_dml = tsl_set_rel_pathlist_dml,
+	.set_rel_pathlist_query = tsl_set_rel_pathlist_query,
+
+	/* bgw policies */
+	.policy_compression_add = policy_compression_add,
+	.policy_compression_remove = policy_compression_remove,
+
+	.....
+  
+	.update_compressed_chunk_relstats = update_compressed_chunk_relstats,
+};
+
+
+PGDLLEXPORT Datum
+ts_module_init(PG_FUNCTION_ARGS)
+{
+	ts_cm_functions = &tsl_cm_functions;
+
+	_continuous_aggs_cache_inval_init();
+	_decompress_chunk_init();
+	_skip_scan_init();
+	_remote_connection_cache_init();
+	_remote_dist_txn_init();
+	_tsl_process_utility_init();
+	/* Register a cleanup function to be called when the backend exits */
+	on_proc_exit(ts_module_cleanup_on_pg_exit, 0);
+	PG_RETURN_BOOL(true);
+}
+
+
+
