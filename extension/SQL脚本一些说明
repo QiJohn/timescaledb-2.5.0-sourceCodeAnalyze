@@ -1,0 +1,29 @@
+------------------------------SQL脚本文件中，部分函数通过宏定义调用跨模块函数：例如“ts_dist_remote_chunk_info”-------------------------------------
+sql脚本中内容为：
+    CREATE OR REPLACE FUNCTION _timescaledb_internal.data_node_hypertable_info(
+        node_name              NAME,
+        schema_name_in name,
+        table_name_in name
+    )
+    RETURNS TABLE (
+        table_bytes     bigint,
+        index_bytes     bigint,
+        toast_bytes     bigint,
+        total_bytes     bigint)
+    AS '$libdir/timescaledb-2.5.0', 'ts_dist_remote_hypertable_info' LANGUAGE C VOLATILE STRICT;
+
+在C源码中对应的内容为：src/cross_module_fn.c文件内的
+    CROSSMODULE_WRAPPER(dist_remote_chunk_info);
+其中“CROSSMODULE_WRAPPER”为一个宏定义，函数参数中"##"用于编译期间粘连两个符合，具体的内容如下：
+       #define CROSSMODULE_WRAPPER(func)              \
+        TS_FUNCTION_INFO_V1(ts_##func);                 \
+          Datum ts_##func(PG_FUNCTION_ARGS)            \
+          {                                           \
+              PG_RETURN_DATUM(ts_cm_functions->func(fcinfo));     \
+          }
+
+//通过宏定义实现“ts_dist_remote_hypertable_info”调用跨模块函数“ts_cm_functions->dist_remote_chunk_info(.....)”
+
+
+
+
