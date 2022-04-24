@@ -1,0 +1,151 @@
+------------------------------------------------------创建自己的插件---采用C函数的方式-------------------------------------------
+第一步：创建control文件。例如如下所示的func.control           
+【func为所创建的extension的名称】 
+    #注释
+    comment = 'extension func' 
+
+    #默认版本 
+    default_version = '1.0'
+
+    #元数据内容，表示编译后的SO文件存放位置      
+    module_pathname = '$libdir/func'   
+
+    #元数据，标记插件是否可重定位  
+    relocatable = true    
+
+    #元数据还可以是directory、default_version、comment、encoding、module_pathname、requires、superuser、relocatable，具体解释参考https://www.postgresql.org/docs/13/extend-extensions.html
+
+
+第二步：创建sql文件。例如如下所示的func--1.0.sql       
+【1、func为所创建的extension的名称；2、该sql的命名有严格的默认规范要求其中的"--"不可缺失或修改，例如：创建extension时使用的sql命名为func--1.0.sql，更新extension时使用的命名为func--1.0--2.0.sql。(其中“1.0”“2.0”为版本号)】
+
+    \echo Use "create EXTENSION func" to load this file. \quit
+    CREATE OR REPLACE FUNCTION add(int, int)  RETURNs int
+        AS  'MODULE_PATHNAME', 'add_ab_extension'
+        LANGUAGE C STRICT;
+
+第三步：创建C程序，例如如下所示的func.c
+
+    #include "postgres.h"
+    #include "fmgr.h"
+    #include "utils/array.h"
+    #include "catalog/pg_type.h"
+    #include "funcapi.h"
+    #include "access/heapam.h"
+    #include "utils/palloc.h"
+
+    PG_MODULE_MAGIC;
+
+    /**PG_FUNCTION_INFO_V1**/
+    PG_FUNCTION_INFO_V1(add_ab_extension);
+
+    /**function statement**/
+    Datum add_ab_extension(PG_FUNCTION_ARGS);
+
+    /**function accomplish**/
+    Datum add_ab_extension(PG_FUNCTION_ARGS)
+    {
+        int32 argc_a = PG_GETARG_INT32(0);
+        int32 argc_b = PG_GETARG_INT32(1);
+
+
+        PG_RETURN_INT32(argc_a + argc_b);
+    }
+
+
+第三步：创建C程序，创建Makefile文件
+    MODULES = func
+
+    ## 扩展名称;
+    EXTENSION = func
+
+    ## 扩展安装的SQL文件;
+    DATA = func--1.0.sql
+
+    ## 扩展描述;
+    PGFILEDESC = "func - add function"
+
+    ### 以下为Pg构建扩展相关命令;
+    PG_CONFIG = pg_config
+    PGXS := $(shell $(PG_CONFIG) --pgxs)
+    include $(PGXS)  ## 环境变量参数加载;
+
+第四步：部署插件
+    1、make && make install      【之后会将sql文件、control文件复制到PG安装目录下的extension目录；自动将SO文件复制到$libdir目录】
+    2、在配置文件中，修改“shared_preload_libraries”的值为“func”
+    3、psql连接数据库后，使用“create extension func;”创建插件并使用
+
+
+
+
+
+-------------------------------------------------------------创建自己的插件---采用hook的方式------------------------------------------
+第一步：创建C程序，例如：func.c
+
+    #include "postgres.h"
+    #include "libpq/auth.h"
+    #include "miscadmin.h"
+    #include "utils/guc.h"
+
+    PG_MODULE_MAGIC;
+
+    void _PG_init(void);
+    void _PG_fini(void);
+
+    static ClientAuthentication_hook_type pre_ClientAuthentication_hook = NULL;
+
+    static void welcome_to_pg(Port *port, int status){
+            if(status == STATUS_OK && (strcmp(port->user_name, "zq") == 0))   //当使用用户名zq登录PG数据时，在日志文件中打印信息
+                    printf("欢迎使用hook创建PG extension!\n");
+    }
+
+    //PG在加载该文件的时候，立即执行该函数
+    void _PG_init(void){   
+            pre_ClientAuthentication_hook = ClientAuthentication_hook; //保存原始的函数指针
+            ClientAuthentication_hook = welcome_to_pg;
+    }
+
+    //PG在卸载该文件的时候，立即执行该函数
+    void _PG_fini(void){
+            ClientAuthentication_hook = pre_ClientAuthentication_hook; //卸载该文件时，恢复原始的函数指针
+    }
+
+
+第二步：创建Makefile
+
+    MODULES = func
+
+    ## 扩展名称;
+    EXTENSION = func
+
+    ## 扩展描述;
+    PGFILEDESC = "func - add function"
+
+    ### 以下为Pg构建扩展相关命令;
+    PG_CONFIG = pg_config
+    PGXS := $(shell $(PG_CONFIG) --pgxs)
+    include $(PGXS)  ## 环境变量参数加载;
+
+第三步：部署插件
+
+    1、make && make install      【自动将SO文件复制到$libdir目录】
+    2、在配置文件中，修改“shared_preload_libraries”的值为“func”
+    3、psql连接数据库后，函数触发hook即可自动使用插件
+
+
+-------------------------------------------------------------“create  extension  name_xxxx“执行流程----------------------------------------------
+
+"create extension"会触发“postgresql/src/backend/commands/extension.c”下的“CreateExtensionInternal”函数，该函数所作的处理如下：
+1、依据扩展名“name_xxxx”调用函数read_extension_control_file，到PG安装目录下的extension目录中，读取namae_xxxx.control文件；
+
+2、调用函数“get_extension_script_filename”到PG安装目录下的extension目录中，读取扩展对应的sql文件；
+
+3、调用函数“InsertExtensionTuple”将扩展插入到元数据表“pg_extension”中，和创建对应的依赖关系实体，并实体将插入到依赖关系表“pg_depend”中；
+
+4、调用函数“CreateComments”将扩展的描述信息插入到描述信息表“pg_description”中；
+
+5、调用函数“execute_extension_script”执行扩展对应的sql文件；
+
+6、如果扩展需要更新，则调用函数“ApplyExtensionUpdates”对扩展进行更新
+
+
