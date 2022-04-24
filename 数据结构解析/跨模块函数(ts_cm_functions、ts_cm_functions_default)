@@ -1,6 +1,6 @@
 /* 【文件所在路径：timescaledb/src/cross_module_fn.h】
 *  要定义跨模块函数，请将其添加到此结构中，如果是默认版本则添加到cross_module_fn.c中的ts_cm_functions_default，并将覆盖的版本添加到tsl/src/init.c中的tsl_cm_functions
-*  这将允许函数以“ts_cm_functions-><函数名>”的形式被调用
+*  这将允许函数以“ts_cm_functions-><函数名>”的形式被调用，例如“ts_cm_functions->policy_compression_add(....)”
 */
 typedef struct CrossModuleFunctions
 {
