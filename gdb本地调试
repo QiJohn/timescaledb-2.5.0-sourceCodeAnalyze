@@ -1,0 +1,15 @@
+测试例一：
+    1、使用“psql -dpostgres -p55980 -Uzq -hlocalhost”连接timescaledb数据库
+    2、使用“ps -ef | grep postgres”获取idle进程号
+    3、gdb  attach [进程ID]
+    
+
+
+测试例二：该调试会调用tui实时显示源码
+    1、使用“psql -dpostgres -p55980 -Uzq -hlocalhost”连接timescaledb数据库
+    2、使用“ps -ef | grep postgres”获取idle进程号
+    3、gdb -tui -p [进程ID]
+
+
+
+
