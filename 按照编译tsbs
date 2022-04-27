@@ -1,0 +1,11 @@
+第一步：安装配置go环境，例如go1.8
+
+第二步：配置go环境变量：
+          go env -w GO111MODULE=on
+          go env -w GOPROXY=https://goproxy.cn,direct
+
+第三步：安装tsbs：go install github.com/timescale/tsbs@latest
+
+第四步：切换目录：cd  /home/zq/go/pkg/mod/github.com/
+第五步：赋予写权限：chmod -R +w timescale/
+第六步：编译：使用cd命令切换到/home/zq/go/pkg/mod/github.com/timescale下tsbs目录，使用命令make进行编译。
