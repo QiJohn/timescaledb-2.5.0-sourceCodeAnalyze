@@ -1,53 +1,102 @@
-函数“first”的sql定义如下所示：
+参考文档：http://mysql.taobao.org/monthly/2018/02/10/
+
+
+===========函数“first”的sql定义如下所示：由于存在“COMBINEFUNC”函数，故是一个并行聚合
 	CREATE OR REPLACE AGGREGATE first(anyelement, "any") (
-		SFUNC = _timescaledb_internal.first_sfunc,
-		STYPE = internal,
-		COMBINEFUNC = _timescaledb_internal.first_combinefunc,
-		SERIALFUNC = _timescaledb_internal.bookend_serializefunc,
-		DESERIALFUNC = _timescaledb_internal.bookend_deserializefunc,
+		SFUNC = _timescaledb_internal.first_sfunc,                                                              ---每行的操作函数
+		STYPE = internal,													                                                    ---聚合后返回类型
+		COMBINEFUNC = _timescaledb_internal.first_combinefunc,                                    ---聚合并行函数
+		SERIALFUNC = _timescaledb_internal.bookend_serializefunc,                                  ---序列化函数
+		DESERIALFUNC = _timescaledb_internal.bookend_deserializefunc,                          ---反序列化函数
 		PARALLEL = SAFE,
-		FINALFUNC = _timescaledb_internal.bookend_finalfunc,
+		FINALFUNC = _timescaledb_internal.bookend_finalfunc,                                          ---最终处理函数，并返回本次的聚合结果
 		FINALFUNC_EXTRA
 	);
+其中定义的函数会在创建”timescaledb“这个插件的过程中，调用"aggregatecmds.c"的函数“DefineAggregate”依据标识名逐一进行获取。
+而这些函数的使用则是通过”FunctionCallInvoke(fcinfo)“进行调用，具体调用关系如下所述：
+	in ExecInterpExpr  at execExprInterp.c:1645           ==》   ts_first_sfunc
+	in finalize_partialaggregate  at nodeAgg.c:1019    ==》   ts_bookend_serializefunc
+	in ExecInterpExpr at execExprInterp.c:1520            ==》   ts_bookend_deserializefunc
+	in ExecInterpExpr at execExprInterp.c:1645            ==》   ts_first_combinefunc
+	in finalize_aggregate  at nodeAgg.c:954                ==》   ts_bookend_finalfunc
 
 
-函数“_timescaledb_internal.first_sfunc”的sql定义如下所示：
+
+
+===========函数“_timescaledb_internal.first_sfunc”的sql定义如下所示：
 	CREATE OR REPLACE FUNCTION _timescaledb_internal.first_sfunc(internal, anyelement, "any")
 	RETURNS internal
 	AS '@MODULE_PATHNAME@', 'ts_first_sfunc'
 	LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 
-函数“_timescaledb_internal.first_combinefunc”的sql定义如下所示：
+===========函数“_timescaledb_internal.first_combinefunc”的sql定义如下所示：
 	CREATE OR REPLACE FUNCTION _timescaledb_internal.first_combinefunc(internal, internal)
 	RETURNS internal
 	AS '@MODULE_PATHNAME@', 'ts_first_combinefunc'
 	LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 
-函数“_timescaledb_internal.bookend_serializefunc”的sql定义如下所示：
+===========函数“_timescaledb_internal.bookend_serializefunc”的sql定义如下所示：
 	CREATE OR REPLACE FUNCTION _timescaledb_internal.bookend_serializefunc(internal)
 	RETURNS bytea
 	AS '@MODULE_PATHNAME@', 'ts_bookend_serializefunc'
 	LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 
-函数“_timescaledb_internal.bookend_deserializefunc”的sql定义如下所示：
+===========函数“_timescaledb_internal.bookend_deserializefunc”的sql定义如下所示：
 	CREATE OR REPLACE FUNCTION _timescaledb_internal.bookend_deserializefunc(bytea, internal)
 	RETURNS internal
 	AS '@MODULE_PATHNAME@', 'ts_bookend_deserializefunc'
 	LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
 
 
-函数“_timescaledb_internal.bookend_finalfunc”的sql定义如下所示：
+===========函数“_timescaledb_internal.bookend_finalfunc”的sql定义如下所示：
 	CREATE OR REPLACE FUNCTION _timescaledb_internal.bookend_finalfunc(internal, anyelement, "any")
 	RETURNS anyelement
 	AS '@MODULE_PATHNAME@', 'ts_bookend_finalfunc'
 	LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 
-执行函数"first"函数时，相关函数调用顺序如下所示：
+
+===========执行函数"first"函数时，相关函数调用顺序如下所示：
 ---------->ts_first_sfunc--------->ts_bookend_serializefunc----------->ts_bookend_deserializefunc-------->ts_first_combinefunc-------->ts_bookend_finalfunc---->
 	   |-----循环调用----------|		                                                   |------------------------------循环调用-------------------------------|
+
+
+
+
+===========执行实例，如下所示，对每个子chunk逐一进行处理
+	postgres=# explain select first(cpu, temperature) from sensor_data ;
+												QUERY PLAN
+	---------------------------------------------------------------------------------------------------------
+	Finalize Aggregate  (cost=7155.22..7155.23 rows=1 width=8)
+	->  Gather  (cost=1613.12..7155.10 rows=22 width=32)
+			Workers Planned: 2
+			->  Parallel Append  (cost=613.12..6152.90 rows=11 width=32)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_1_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_2_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_3_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_4_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_5_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_6_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_7_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_8_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_9_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=613.12..613.13 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_10_chunk  (cost=0.00..554.29 rows=23529 width=16)
+				->  Partial Aggregate  (cost=21.55..21.56 rows=1 width=32)
+						->  Parallel Seq Scan on _hyper_1_11_chunk  (cost=0.00..19.24 rows=924 width=16)
+	(26 rows)
+
 
 
