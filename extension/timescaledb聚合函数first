@@ -12,13 +12,13 @@
 		FINALFUNC = _timescaledb_internal.bookend_finalfunc,                                          ---最终处理函数，并返回本次的聚合结果
 		FINALFUNC_EXTRA
 	);
-其中定义的函数会在创建”timescaledb“这个插件的过程中，调用"aggregatecmds.c"的函数“DefineAggregate”依据标识名逐一进行获取。
-而这些函数的使用则是通过”FunctionCallInvoke(fcinfo)“进行调用，具体调用关系如下所述：
-	in ExecInterpExpr  at execExprInterp.c:1645           ==》   ts_first_sfunc
-	in finalize_partialaggregate  at nodeAgg.c:1019    ==》   ts_bookend_serializefunc
-	in ExecInterpExpr at execExprInterp.c:1520            ==》   ts_bookend_deserializefunc
-	in ExecInterpExpr at execExprInterp.c:1645            ==》   ts_first_combinefunc
-	in finalize_aggregate  at nodeAgg.c:954                ==》   ts_bookend_finalfunc
+	其中定义的函数会在创建”timescaledb“这个插件的过程中，调用"aggregatecmds.c"的函数“DefineAggregate”依据标识名逐一进行获取。
+	而这些函数的使用则是通过”FunctionCallInvoke(fcinfo)“进行调用，具体调用关系如下所述：
+		in ExecInterpExpr  at execExprInterp.c:1645           ==》   ts_first_sfunc
+		in finalize_partialaggregate  at nodeAgg.c:1019    ==》   ts_bookend_serializefunc
+		in ExecInterpExpr at execExprInterp.c:1520            ==》   ts_bookend_deserializefunc
+		in ExecInterpExpr at execExprInterp.c:1645            ==》   ts_first_combinefunc
+		in finalize_aggregate  at nodeAgg.c:954                ==》   ts_bookend_finalfunc
 
 
 
