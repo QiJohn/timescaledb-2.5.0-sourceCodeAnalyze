@@ -46,6 +46,8 @@
 	LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 
-
+执行函数"first"函数时，相关函数调用顺序如下所示：
+---------->ts_first_sfunc--------->ts_bookend_serializefunc----------->ts_bookend_deserializefunc-------->ts_first_combinefunc-------->ts_bookend_finalfunc---->
+	   |-----循环调用----------|		                                                   |------------------------------循环调用-------------------------------|
 
 
