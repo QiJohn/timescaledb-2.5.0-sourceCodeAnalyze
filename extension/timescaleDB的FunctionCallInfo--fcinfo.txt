@@ -1,0 +1,54 @@
+=============fcinfo定义============
+	在timescaledb中能够直接用SQL语句调用的函数（prosrc），他的参数必须是”PG_FUNCTION_ARGS“（PG通过该宏向函数传递参数）。该参数在PG源码”src/include/fmgr.h“中
+使用宏”#define PG_FUNCTION_ARGS	FunctionCallInfo fcinfo“进行定义。而"FunctionCallInfo"又使用宏”typedef struct FunctionCallInfoBaseData *FunctionCallInfo“
+进行定义，结构体数据”FunctionCallInfoBaseData“的定义则如下所示：
+	typedef struct FunctionCallInfoBaseData
+	{
+		FmgrInfo   *flinfo;			/* ptr to lookup info used for this call */
+		fmNodePtr	context;		/* pass info about context of call */
+		fmNodePtr	resultinfo;		/* pass or return extra info about result */
+		Oid			fncollation;	/* collation for function to use */
+	#define FIELDNO_FUNCTIONCALLINFODATA_ISNULL 4
+		bool		isnull;			/* function must set true if result is NULL */
+		short		nargs;			/* # arguments actually passed */
+	#define FIELDNO_FUNCTIONCALLINFODATA_ARGS 6
+		NullableDatum args[FLEXIBLE_ARRAY_MEMBER];
+	} FunctionCallInfoBaseData;
+
+
+=============fcinfo初始化============
+在PG源码"src/include/fmgr.h"中定义了如下所示的宏,
+	#define InitFunctionCallInfoData(Fcinfo, Flinfo, Nargs, Collation, Context, Resultinfo) \
+	do { \
+		(Fcinfo).flinfo = (Flinfo); \
+		(Fcinfo).context = (Context); \
+		(Fcinfo).resultinfo = (Resultinfo); \
+		(Fcinfo).fncollation = (Collation); \
+		(Fcinfo).isnull = false; \
+		(Fcinfo).nargs = (Nargs); \
+	} while (0)
+通过调用该宏可以实现对fcinfo进行初始化，其中参数“Fcinfo”即需要进行初始化的fcinfo对象。
+
+
+
+
+===============fcinfo传递函数参数内容================
+提取宏”PG_FUNCTION_ARGS“（即fcino）传递给函数的参数的方法有如下所示：
+	#define PG_GETARG_DATUM(n)	 (fcinfo->args[n].value)                                     // 提取指定位置的参数
+	#define PG_GETARG_UINT16(n)  DatumGetUInt16(PG_GETARG_DATUM(n))       // 将指定位置的参数转换为uint16
+	#define PG_GETARG_INT32(n)	 DatumGetInt32(PG_GETARG_DATUM(n))           // 将指定位置的参数转换为int32
+	#define PG_GETARG_CHAR(n)	 DatumGetChar(PG_GETARG_DATUM(n))       	 // 将指定位置的参数转换为char
+	#define PG_GETARG_BOOL(n)	 DatumGetBool(PG_GETARG_DATUM(n))			 // 将指定位置的参数转换为bool
+	#define PG_GETARG_OID(n)	 DatumGetObjectId(PG_GETARG_DATUM(n))		 // 将指定位置的参数转换为oid
+	#define PG_GETARG_POINTER(n) DatumGetPointer(PG_GETARG_DATUM(n))	  // 将指定位置的参数转换为指针
+
+
+
+================fcinfo传递函数指针实现回调==============
+	第三方插件自定义的函数可以通过方式”FunctionCallInvoke(fcinfo)“进行调用，而该”FunctionCallInvoke(fcinfo)“是一个宏定义，且定义位于"src/include/fmgr.h"
+中，具体的定义如下所示：
+		#define FunctionCallInvoke(fcinfo)	((* (fcinfo)->flinfo->fn_addr) (fcinfo))
+	通过”FunctionCallInvoke(fcinfo)“调用执行第三方插件定义的函数，例如有”ts_first_sfunc、ts_bookend_serializefunc、ts_bookend_deserializefunc、ts_first_combinefunc”等。
+
+
+
