@@ -1,0 +1,43 @@
+====================cache的定义========================
+在timescaledb的源码“src/cache.h”中，cache的定义如下所示：
+	typedef struct Cache
+	{
+		HASHCTL hctl;
+		HTAB *htab;
+		int refcount;          //引用次数，为零就可以删除
+		const char *name;
+		long numelements;
+		int flags;
+		CacheStats stats;
+		void *(*get_key)(struct CacheQuery *);
+		void *(*create_entry)(struct Cache *, CacheQuery *);
+		void *(*update_entry)(struct Cache *, CacheQuery *);
+		void (*missing_error)(const struct Cache *, const CacheQuery *);
+		bool (*valid_result)(const void *);
+		void (*remove_entry)(void *entry);
+		void (*pre_destroy_hook)(struct Cache *);
+		bool handle_txn_callbacks;   //在 (sub)txn 中止和提交时自动释放缓存。 如果在 txn 回调中使用缓存，则应该关闭
+		bool release_on_commit;     //如果执行类似“CLUSTER”或者“VACUUM”操作的交叉commit，此值应该设置为false
+	} Cache;
+
+
+
+
+
+====================cache初始化========================
+timescaledb核心代码总共有三处进行cache的初始化，分别如下：
+1、ts_cache_init。
+	在分配了“Hypertable cache”上下文cache后，需要使用该函数进行cache的初始化。
+
+2、chunk_scan_ctx_init。用于初始化一个扫描chunks的上下文cache，在扫描的过程中连接hypertable和chunk相关信息。
+	在chunk_collides、chunk_collision_resolve、chunk_find、chunks_find_all_in_range_limit、chunk_find_all等涉及到需要遍历chunk的函数
+中，需要初始化并使用该cache。
+
+3、initialize_func_info。用于初始化一个存储function的上下文cache，主要是bucket相关的函数。
+	在调用函数ts_func_cache_get获取bucket函数的过程中需要使用到。
+
+
+
+
+
+
