@@ -1,0 +1,31 @@
+============pg_catalog.pg_inherits表，记录继承关系=========
+例如：postgres=# select * from pg_catalog.pg_inherits ;
+			inhrelid | inhparent | inhseqno
+			----------+-----------+----------
+				34494 |     34484 |        1
+				34504 |     34484 |        1
+				34514 |     34484 |        1
+				34524 |     34484 |        1
+				34534 |     34484 |        1
+				34544 |     34484 |        1
+				34554 |     34484 |        1
+				34564 |     34484 |        1
+				34574 |     34484 |        1
+				34584 |     34484 |        1
+			(10 rows)
+
+其中"inhparent"为父对象oid，”inhrelid“为子对象oid。（34484为hypertable某个表的oid，34494为该hypertable对应的一个子chunk的oid）
+
+
+
+
+
+
+
+
+
+
+
+
+
+
