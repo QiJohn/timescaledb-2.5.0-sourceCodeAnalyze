@@ -1,0 +1,118 @@
+ChunkDiapatch主要分三部分ChunkDispatchPath、ChunkDispatchPlan、ChunkDispatchSate，通过这三部分的配合，对原始的写入计划进行修改，以确保数据写入到指定的chunk中；
+各部分的功能介绍如下：
+	1、"ChunkDispatchPath"，构建path，并通过绑定的回调函数构建plan。
+	2、“ChunkDispatchPlan”，构建plan，并通过绑定的回调函数构建State。
+	3、"ChunkDispatchSate"，执行计划相关的完整的状态数据，从“开始"到”执行“最后到”结束“全部包含。
+
+
+
+
+
+=====================ChunkDispatchPath定义、使用================
+=====定义如下所示：=====
+	Path *ts_chunk_dispatch_path_create(PlannerInfo *root, ModifyTablePath *mtpath, Index hypertable_rti,	int subpath_index)
+	{
+		ChunkDispatchPath *path = (ChunkDispatchPath *) palloc0(sizeof(ChunkDispatchPath));
+	#if PG14_LT
+		Path *subpath = list_nth(mtpath->subpaths, subpath_index);
+	#else
+		Path *subpath = mtpath->subpath;
+	#endif
+		RangeTblEntry *rte = planner_rt_fetch(hypertable_rti, root);
+		memcpy(&path->cpath.path, subpath, sizeof(Path));
+		path->cpath.path.type = T_CustomPath;
+		path->cpath.path.pathtype = T_CustomScan;
+		path->cpath.methods = &chunk_dispatch_path_methods;
+		path->cpath.custom_paths = list_make1(subpath);
+		path->mtpath = mtpath;
+		path->hypertable_rti = hypertable_rti;
+		path->hypertable_relid = rte->relid;
+		return &path->cpath.path;
+	}
+
+	static CustomPathMethods chunk_dispatch_path_methods = {
+		.CustomName = "ChunkDispatchPath",
+		.PlanCustomPath = chunk_dispatch_plan_create,
+	};
+=====使用=====
+在构建path的过程中会调用该函数，相关的函数有“ts_hypertable_insert_path_create”、“data_node_dispatch_path_create”、“data_node_copy_path_create”。
+	例如在”timescale_create_upper_paths_hook-->replace_hypertable_insert_paths-->ts_hypertable_insert_path_create“这一调用实例上，就是构建新的path，用
+于对原始的hypertable的插入path进行修改。
+
+
+
+
+
+
+=====================ChunkDispatchPlan定义、使用================
+=====定义如下所示：=====
+	static Plan *chunk_dispatch_plan_create(PlannerInfo *root, RelOptInfo *relopt, CustomPath *best_path,
+							List *tlist, List *clauses, List *custom_plans)
+	{
+		ChunkDispatchPath *cdpath = (ChunkDispatchPath *) best_path;
+		CustomScan *cscan = makeNode(CustomScan);
+		ListCell *lc;
+		foreach (lc, custom_plans)
+		{
+			Plan *subplan = lfirst(lc);
+			cscan->scan.plan.startup_cost += subplan->startup_cost;
+			cscan->scan.plan.total_cost += subplan->total_cost;
+			cscan->scan.plan.plan_rows += subplan->plan_rows;
+			cscan->scan.plan.plan_width += subplan->plan_width;
+		}
+		cscan->custom_private = list_make1_oid(cdpath->hypertable_relid);
+		cscan->methods = &chunk_dispatch_plan_methods;
+		cscan->custom_plans = custom_plans;
+		cscan->scan.scanrelid = 0; /* Indicate this is not a real relation we are
+									* scanning */
+		/* The "input" and "output" target lists should be the same */
+		cscan->custom_scan_tlist = tlist;
+		cscan->scan.plan.targetlist = tlist;
+		return &cscan->scan.plan;
+	}
+
+	static CustomScanMethods chunk_dispatch_plan_methods = {
+		.CustomName = "ChunkDispatch",
+		.CreateCustomScanState = create_chunk_dispatch_state,
+	};
+=====使用=====
+作为“chunk_dispatch_path_methods”的回调函数使用。
+
+
+
+
+
+
+=====================ChunkDispatchState定义、使用================
+=====定义如下所示：=====
+	static CustomExecMethods chunk_dispatch_state_methods = {
+		.CustomName = "ChunkDispatchState",
+		.BeginCustomScan = chunk_dispatch_begin,
+		.EndCustomScan = chunk_dispatch_end,
+		.ExecCustomScan = chunk_dispatch_exec,
+		.ReScanCustomScan = chunk_dispatch_rescan,
+	};
+
+	ChunkDispatchState *ts_chunk_dispatch_state_create(Oid hypertable_relid, Plan *subplan)
+	{
+		ChunkDispatchState *state;
+		state = (ChunkDispatchState *) newNode(sizeof(ChunkDispatchState), T_CustomScanState);
+		state->hypertable_relid = hypertable_relid;
+		state->subplan = subplan;
+		state->cscan_state.methods = &chunk_dispatch_state_methods;
+		return state;
+	}
+
+	static Node *create_chunk_dispatch_state(CustomScan *cscan)
+	{
+		return (Node *) ts_chunk_dispatch_state_create(linitial_oid(cscan->custom_private), linitial(cscan->custom_plans));
+	}
+=====使用=====
+作为“chunk_dispatch_plan_methods”的回调函数使用。
+
+
+
+
+
+
+
