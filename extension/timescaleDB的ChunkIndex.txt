@@ -1,0 +1,31 @@
+从相对关系上而言，hypertable的index作为parent，chunk的index作为与子对应的child。chunk的index是依据hypertable的index信息而创建的，每个chunk有其专属的index。
+
+
+================chunk index的创建========
+	static void	chunk_index_create(Relation hypertable_rel, int32 hypertable_id, Relation hypertable_idxrel,
+					int32 chunk_id, Relation chunkrel, Oid constraint_oid)
+	{
+		Oid chunk_indexrelid;
+		if (OidIsValid(constraint_oid))
+		{
+			/*
+			* If there is an associated constraint then that constraint created
+			* both the index and the catalog entry for the index
+			*/
+			return;
+		}
+		//依据hypertabble的index信息，创建chunk的index
+		chunk_indexrelid =	chunk_relation_index_create(hypertable_rel, hypertable_idxrel, chunkrel, false, InvalidOid);
+
+		//hypertable的index作为parent，chunk的index作为child，将这种parent-child的关系映射添加到catalog中
+		chunk_index_insert(chunk_id,
+						get_rel_name(chunk_indexrelid),
+						hypertable_id,
+						get_rel_name(RelationGetRelid(hypertable_idxrel)));
+	}
+
+
+
+
+
+
