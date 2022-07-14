@@ -16,7 +16,181 @@
 
 其中"inhparent"为父对象oid，”inhrelid“为子对象oid。（34484为hypertable某个表的oid，34494为该hypertable对应的一个子chunk的oid）
 
+===========pg_catalog.pg_index=======================
+	该表存储index的一部分信息。index作为postgresql内的一种class，详细信息可以通过oid在pg_class中进行查询。
+查询存储信息如下所示：
+	-[ RECORD 1 ]--+---------------------
+	indexrelid     | 4160
+	indrelid       | 4159
+	indnatts       | 2
+	indnkeyatts    | 2
+	indisunique    | t
+	indisprimary   | t
+	indisexclusion | f
+	indimmediate   | t
+	indisclustered | f
+	indisvalid     | t
+	indcheckxmin   | f
+	indisready     | t
+	indislive      | t
+	indisreplident | f
+	indkey         | 1 2
+	indcollation   | 0 0
+	indclass       | 1981 1978
+	indoption      | 0 0
+	indexprs       |
+	indpred        |
 
+
+
+===========pg_catalog.pg_indexes===============
+	该表存储对数据中每个index的有用信息。
+查询存储信息如下所示：
+	-[ RECORD 1 ]-----------------------------------------------------------------------------------------------------------------------------
+	schemaname | pg_catalog
+	tablename  | pg_statistic
+	indexname  | pg_statistic_relid_att_inh_index
+	tablespace |
+	indexdef   | CREATE UNIQUE INDEX pg_statistic_relid_att_inh_index ON pg_catalog.pg_statistic USING btree (starelid, staattnum, stainherit)
+
+
+===========pg_catalog.pg_stat_all_indexes【视图】===========
+	该视图通过统计当前数据库中的每一个索引行，显示访问所有index的统计信息
+查询存储信息如下所示：
+	-[ RECORD 1 ]-+--------------------------------------------------------------
+	relid         | 34091
+	indexrelid    | 34101
+	schemaname    | _timescaledb_catalog
+	relname       | hypertable
+	indexrelname  | hypertable_pkey
+	idx_scan      | 110
+	idx_tup_read  | 110
+	idx_tup_fetch | 110
+	-[ RECORD 2 ]-+--------------------------------------------------------------
+	relid         | 34091
+	indexrelid    | 34103
+	schemaname    | _timescaledb_catalog
+	relname       | hypertable
+	indexrelname  | hypertable_associated_schema_name_associated_table_prefix_key
+	idx_scan      | 0
+	idx_tup_read  | 0
+	idx_tup_fetch | 0
+
+
+===========pg_catalog.pg_statio_all_indexes【视图】========
+	该视图通过统计当前数据库中的每一个索引行，显示所有index的I/O的统计信息。
+查询存储信息如下所示：
+	-[ RECORD 1 ]-+---------------------------------
+	relid         | 2619
+	indexrelid    | 2696
+	schemaname    | pg_catalog
+	relname       | pg_statistic
+	indexrelname  | pg_statistic_relid_att_inh_index
+	idx_blks_read | 26
+	idx_blks_hit  | 2775
+	-[ RECORD 2 ]-+---------------------------------
+	relid         | 1247
+	indexrelid    | 2703
+	schemaname    | pg_catalog
+	relname       | pg_type
+	indexrelname  | pg_type_oid_index
+	idx_blks_read | 21
+	idx_blks_hit  | 1938
+
+
+
+===========pg_catalog.pg_statio_sys_indexes【视图】===========
+	该视图通过统计当前数据库中的每一个索引行，显示系统index的I/O的统计信息。
+查询存储信息如下所示：
+	-[ RECORD 1 ]-+---------------------------------
+	relid         | 2619
+	indexrelid    | 2696
+	schemaname    | pg_catalog
+	relname       | pg_statistic
+	indexrelname  | pg_statistic_relid_att_inh_index
+	idx_blks_read | 26
+	idx_blks_hit  | 2775
+	-[ RECORD 2 ]-+---------------------------------
+	relid         | 1247
+	indexrelid    | 2703
+	schemaname    | pg_catalog
+	relname       | pg_type
+	indexrelname  | pg_type_oid_index
+	idx_blks_read | 21
+	idx_blks_hit  | 1938
+
+
+
+
+===========pg_catalog.pg_statio_user_indexes【视图】===========
+	该视图通过统计当前数据库中的每一个索引行，显示用户index的I/O的统计信息。
+查询存储信息如下所示：
+	-[ RECORD 1 ]-+--------------------------------------------------------------
+	relid         | 34478
+	indexrelid    | 34482
+	schemaname    | public
+	relname       | sensors
+	indexrelname  | sensors_pkey
+	idx_blks_read | 2
+	idx_blks_hit  | 400006
+	-[ RECORD 2 ]-+--------------------------------------------------------------
+	relid         | 34484
+	indexrelid    | 34493
+	schemaname    | public
+	relname       | sensor_data
+	indexrelname  | sensor_data_id_idx
+	idx_blks_read | 1
+	idx_blks_hit  | 4
+
+
+
+
+===========pg_catalog.pg_stat_sys_indexes【视图】=========
+	该视图通过统计当前数据库中的每一个索引行，显示系统索引的统计
+查询存储信息如下所示：
+	-[ RECORD 1 ]-+---------------------------------
+	relid         | 2619
+	indexrelid    | 2696
+	schemaname    | pg_catalog
+	relname       | pg_statistic
+	indexrelname  | pg_statistic_relid_att_inh_index
+	idx_scan      | 1345
+	idx_tup_read  | 967
+	idx_tup_fetch | 964
+	-[ RECORD 2 ]-+---------------------------------
+	relid         | 1247
+	indexrelid    | 2703
+	schemaname    | pg_catalog
+	relname       | pg_type
+	indexrelname  | pg_type_oid_index
+	idx_scan      | 870
+	idx_tup_read  | 785
+	idx_tup_fetch | 754
+
+
+
+
+===========pg_catalog.pg_stat_user_indexes【视图】=========
+	该视图通过统计当前数据库中的每一个索引行，显示用户索引的统计
+查询存储信息如下所示：
+	-[ RECORD 1 ]-+--------------------------------------------------------------
+	relid         | 34478
+	indexrelid    | 34482
+	schemaname    | public
+	relname       | sensors
+	indexrelname  | sensors_pkey
+	idx_scan      | 400000
+	idx_tup_read  | 400000
+	idx_tup_fetch | 400000
+	-[ RECORD 2 ]-+--------------------------------------------------------------
+	relid         | 34484
+	indexrelid    | 34493
+	schemaname    | public
+	relname       | sensor_data
+	indexrelname  | sensor_data_id_idx
+	idx_scan      | 0
+	idx_tup_read  | 0
+	idx_tup_fetch | 0
 
 
 
