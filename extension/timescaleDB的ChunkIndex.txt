@@ -1,7 +1,8 @@
 从相对关系上而言，hypertable的index作为parent，chunk的index作为与子对应的child。chunk的index是依据hypertable的index信息而创建的，每个chunk有其专属的index。
 
 
-================chunk index的创建========
+================chunk index的创建===========
+======创建index涉及的函数源码：
 	static void	chunk_index_create(Relation hypertable_rel, int32 hypertable_id, Relation hypertable_idxrel,
 					int32 chunk_id, Relation chunkrel, Oid constraint_oid)
 	{
@@ -23,6 +24,51 @@
 						hypertable_id,
 						get_rel_name(RelationGetRelid(hypertable_idxrel)));
 	}
+
+======创建成功的index会分别存储到如下所示的表：
+	1、pg_catalog.pg_class
+	2、pg_catalog.pg_index
+	3、pg_catalog.pg_indexes
+	4、_timescaledb_catalog.chunk_index
+
+
+
+================_timescaledb_catalog.chunk_index=============
+	该表为timescaledb自定义的表，用于存储timescledb自定义表hypertable的index和chunks的index之间的映射关系。
+查询存储信息如下所示：
+		postgres=# select * from _timescaledb_catalog.chunk_index ;
+		chunk_id |              index_name                             | hypertable_id | hypertable_index_name
+		----------+--------------------------------------+---------------+-----------------------
+				    1 | _hyper_1_1_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    2 | _hyper_1_2_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    3 | _hyper_1_3_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    4 | _hyper_1_4_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    5 | _hyper_1_5_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    6 | _hyper_1_6_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    7 | _hyper_1_7_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    8 | _hyper_1_8_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+				    9 | _hyper_1_9_chunk_sensor_data_id_idx  |                    1 | sensor_data_id_idx
+			      10 | _hyper_1_10_chunk_sensor_data_id_idx |                   1 | sensor_data_id_idx
+		(10 rows)
+
+
+================pg_catalog.pg_class、pg_catalog.pg_index、pg_catalog.pg_indexes=============
+	这些表由postgresql创建，用于存储PG、以及第三方插件相关的所有的index信息。
+查询存储信息如下所示：
+		postgres=# select * from pg_catalog.pg_indexes;
+			    .......
+			-[ RECORD 157 ]-------------------------------------------------------------------------------------------------------------------------------
+			schemaname | _timescaledb_internal
+			tablename     | _hyper_1_9_chunk
+			indexname     | _hyper_1_9_chunk_sensor_data_id_idx
+			tablespace     |
+			indexdef         | CREATE INDEX _hyper_1_9_chunk_sensor_data_id_idx ON _timescaledb_internal._hyper_1_9_chunk USING btree (id DESC)
+			-[ RECORD 158 ]-------------------------------------------------------------------------------------------------------------------------------
+			schemaname | _timescaledb_internal
+			tablename     | _hyper_1_10_chunk
+			indexname     | _hyper_1_10_chunk_sensor_data_id_idx
+			tablespace     |
+			indexdef         | CREATE INDEX _hyper_1_10_chunk_sensor_data_id_idx ON _timescaledb_internal._hyper_1_10_chunk USING btree (id DESC)
 
 
 
