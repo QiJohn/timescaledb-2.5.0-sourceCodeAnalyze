@@ -5,7 +5,7 @@
 	CREATE OR REPLACE AGGREGATE first(anyelement, "any") (
 		SFUNC = _timescaledb_internal.first_sfunc,                                                              ---每行的操作函数
 		STYPE = internal,													                                                    ---聚合后返回类型
-		COMBINEFUNC = _timescaledb_internal.first_combinefunc,                                    ---聚合并行函数
+		COMBINEFUNC = _timescaledb_internal.first_combinefunc,                                    ---聚合并行函数（有此函数就存在并行，否则不存在并行）
 		SERIALFUNC = _timescaledb_internal.bookend_serializefunc,                                  ---序列化函数
 		DESERIALFUNC = _timescaledb_internal.bookend_deserializefunc,                          ---反序列化函数
 		PARALLEL = SAFE,
