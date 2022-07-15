@@ -11,16 +11,12 @@
 			elog(ERROR, "cache lookup failed for constraint %u", constraint_oid);
 
 		con = (Form_pg_constraint) GETSTRUCT(tuple);
-
 		if (chunk_constraint_need_on_chunk(chunk->relkind, con))
 		{
-			ChunkConstraint *cc =
-				chunk_constraints_add(chunk->constraints, chunk->fd.id, 0, NULL, NameStr(con->conname));
-
+			ChunkConstraint *cc = chunk_constraints_add(chunk->constraints, chunk->fd.id, 0, NULL, NameStr(con->conname));
 			chunk_constraint_insert(cc);      //将hypertable与chunk的constraint之间的映射信息写入到表”_timescaledb_catalog.chunk_constraint“中
 
-			//在chunk表上创建constraint，并添加相关的metadata（例如index）到catalog上
-			chunk_constraint_create(cc,
+			chunk_constraint_create(cc,     //在chunk表上创建constraint，并添加相关的metadata（例如index）到”_timescaledb_catalog“上
 									chunk->table_id,
 									chunk->fd.id,
 									chunk->hypertable_relid,
@@ -31,40 +27,193 @@
 	}
 
 
+	static Oid chunk_constraint_create(const ChunkConstraint *cc, Oid chunk_oid, int32 chunk_id,
+							Oid hypertable_oid, int32 hypertable_id)
+	{
+		Oid chunk_constraint_oid;
+
+		ts_process_utility_set_expect_chunk_modification(true);
+		chunk_constraint_oid = chunk_constraint_create_on_table(cc, chunk_oid);    //在chunk表上创建constraint
+		ts_process_utility_set_expect_chunk_modification(false);
+
+		/*
+		* The table constraint might not have been created if this constraint
+		* corresponds to a dimension slice that covers the entire range of values
+		* in the particular dimension. In that case, there is no need to add a
+		* table constraint.
+		*/
+		if (!OidIsValid(chunk_constraint_oid))
+			return InvalidOid;
+
+		if (!is_dimension_constraint(cc))
+		{
+			Oid hypertable_constraint_oid =
+				get_relation_constraint_oid(hypertable_oid,
+											NameStr(cc->fd.hypertable_constraint_name),
+											false);
+			HeapTuple tuple = SearchSysCache1(CONSTROID, hypertable_constraint_oid);
+
+			if (HeapTupleIsValid(tuple))
+			{
+				FormData_pg_constraint *constr = (FormData_pg_constraint *) GETSTRUCT(tuple);
+
+				if (OidIsValid(constr->conindid) && constr->contype != CONSTRAINT_FOREIGN)
+					ts_chunk_index_create_from_constraint(hypertable_id,        //依据constraint获取index相关信息，并将这些信息添加到_timescaledb_catalog
+														hypertable_constraint_oid,
+														chunk_id,
+														chunk_constraint_oid);
+
+				ReleaseSysCache(tuple);
+			}
+		}
+
+		return chunk_constraint_oid;
+	}
 
 
+	static Oid
+	chunk_constraint_create_on_table(const ChunkConstraint *cc, Oid chunk_oid)
+	{
+		HeapTuple tuple;
+		Datum values[Natts_chunk_constraint];
+		bool nulls[Natts_chunk_constraint] = { false };
+		CatalogSecurityContext sec_ctx;
+		Relation rel;
+
+		chunk_constraint_fill_tuple_values(cc, values, nulls);
+
+		rel = RelationIdGetRelation(catalog_get_table_id(ts_catalog_get(), CHUNK_CONSTRAINT));
+		tuple = heap_form_tuple(RelationGetDescr(rel), values, nulls);
+		RelationClose(rel);
+
+		ts_catalog_database_info_become_owner(ts_catalog_database_info_get(), &sec_ctx);
+		/*参数"DDL_ADD_CHUNK_CONSTRAINT"对应的函数名为”chunk_constraint_add_table_constraint“，
+		*该函数定义在”chunk_constraint.sql“中，并通过"FunctionCallInvoke"进行调用
+		*/
+		CatalogInternalCall1(DDL_ADD_CHUNK_CONSTRAINT, HeapTupleGetDatum(tuple));
+		ts_catalog_restore_user(&sec_ctx);
+		heap_freetuple(tuple);
+
+		return get_relation_constraint_oid(chunk_oid, NameStr(cc->fd.constraint_name), true);
+	}
 
 ================表_timescaledb_catalog.chunk_constraint==============
 	该表为timescaledb自定义的表，用于存储timescledb自定义表hypertable的constraint和chunks的constraint之间的映射关系。
 查询存储信息如下所示：
-postgres=# select * from _timescaledb_catalog.chunk_constraint;
- chunk_id | dimension_slice_id |         constraint_name          | hypertable_constraint_name
-----------+--------------------+----------------------------------+----------------------------
-        1 |                  1 | constraint_1                     |
-        1 |                    | 1_1_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        2 |                  2 | constraint_2                     |
-        2 |                    | 2_2_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        3 |                  3 | constraint_3                     |
-        3 |                    | 3_3_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        4 |                  4 | constraint_4                     |
-        4 |                    | 4_4_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        5 |                  5 | constraint_5                     |
-        5 |                    | 5_5_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        6 |                  6 | constraint_6                     |
-        6 |                    | 6_6_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        7 |                  7 | constraint_7                     |
-        7 |                    | 7_7_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        8 |                  8 | constraint_8                     |
-        8 |                    | 8_8_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-        9 |                  9 | constraint_9                     |
-        9 |                    | 9_9_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
-       10 |                 10 | constraint_10                    |
-       10 |                    | 10_10_sensor_data_sensor_id_fkey | sensor_data_sensor_id_fkey
-(20 rows)
+		postgres=# select * from _timescaledb_catalog.chunk_constraint;
+		chunk_id | dimension_slice_id |         constraint_name          | hypertable_constraint_name
+		----------+--------------------+----------------------------------+----------------------------
+				1 |                  1 | constraint_1                     |
+				1 |                    | 1_1_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				2 |                  2 | constraint_2                     |
+				2 |                    | 2_2_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				3 |                  3 | constraint_3                     |
+				3 |                    | 3_3_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				4 |                  4 | constraint_4                     |
+				4 |                    | 4_4_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				5 |                  5 | constraint_5                     |
+				5 |                    | 5_5_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				6 |                  6 | constraint_6                     |
+				6 |                    | 6_6_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				7 |                  7 | constraint_7                     |
+				7 |                    | 7_7_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				8 |                  8 | constraint_8                     |
+				8 |                    | 8_8_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+				9 |                  9 | constraint_9                     |
+				9 |                    | 9_9_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+			10 |                 10 | constraint_10                    |
+			10 |                    | 10_10_sensor_data_sensor_id_fkey | sensor_data_sensor_id_fkey
+		(20 rows)
 
 
 
 
+================表pg_catalog.pg_constraint==============
+	这些表由postgresql创建，用于存储PG、以及第三方插件相关的所有的constraint信息。
+查询存储信息如下所示：
+	示例1：
+		postgres=# select * from pg_catalog.pg_constraint where conname='constraint_1';
+		oid           | 34497
+		conname       | constraint_1
+		connamespace  | 34085
+		contype       | c
+		condeferrable | f
+		condeferred   | f
+		convalidated  | t
+		conrelid      | 34494
+		contypid      | 0
+		conindid      | 0
+		conparentid   | 0
+		confrelid     | 0
+		confupdtype   |
+		confdeltype   |
+		confmatchtype |
+		conislocal    | t
+		coninhcount   | 0
+		connoinherit  | f
+		conkey        | {1}
+		confkey       |
+		conpfeqop     |
+		conppeqop     |
+		conffeqop     |
+		conexclop     |
+		conbin        | {BOOLEXPR :boolop and :args ({OPEXPR :opno 525 :opfuncid 150 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 88} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 94 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 91} {OPEXPR :opno 97 :opfuncid 66 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location 102} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 107 :constvalue 4 [ -96 -122 1 0 0 0 0 0 ]}) :location 105}) :location 98}
 
+	示例2：
+		postgres=# select * from pg_catalog.pg_constraint where conname='1_1_sensor_data_sensor_id_fkey';
+		oid           | 34498
+		conname       | 1_1_sensor_data_sensor_id_fkey
+		connamespace  | 34085
+		contype       | f
+		condeferrable | f
+		condeferred   | f
+		convalidated  | t
+		conrelid      | 34494
+		contypid      | 0
+		conindid      | 34482
+		conparentid   | 0
+		confrelid     | 34478
+		confupdtype   | a
+		confdeltype   | a
+		confmatchtype | s
+		conislocal    | t
+		coninhcount   | 0
+		connoinherit  | t
+		conkey        | {2}
+		confkey       | {1}
+		conpfeqop     | {96}
+		conppeqop     | {96}
+		conffeqop     | {96}
+		conexclop     |
+		conbin        |
+
+
+	示例3：
+		postgres=# select * from pg_catalog.pg_constraint where conname='sensor_data_sensor_id_fkey';
+		oid           | 34487
+		conname       | sensor_data_sensor_id_fkey
+		connamespace  | 2200
+		contype       | f
+		condeferrable | f
+		condeferred   | f
+		convalidated  | t
+		conrelid      | 34484
+		contypid      | 0
+		conindid      | 34482
+		conparentid   | 0
+		confrelid     | 34478
+		confupdtype   | a
+		confdeltype   | a
+		confmatchtype | s
+		conislocal    | t
+		coninhcount   | 0
+		connoinherit  | t
+		conkey        | {2}
+		confkey       | {1}
+		conpfeqop     | {96}
+		conppeqop     | {96}
+		conffeqop     | {96}
+		conexclop     |
+		conbin        |
 
 
