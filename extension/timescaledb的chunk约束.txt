@@ -1,0 +1,45 @@
+
+================chunk constraint创建源码===========
+	void ts_chunk_constraint_create_on_chunk(const Chunk *chunk, Oid constraint_oid)
+	{
+		HeapTuple tuple;
+		Form_pg_constraint con;
+
+		tuple = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
+
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for constraint %u", constraint_oid);
+
+		con = (Form_pg_constraint) GETSTRUCT(tuple);
+
+		if (chunk_constraint_need_on_chunk(chunk->relkind, con))
+		{
+			ChunkConstraint *cc =
+				chunk_constraints_add(chunk->constraints, chunk->fd.id, 0, NULL, NameStr(con->conname));
+
+			chunk_constraint_insert(cc);      //将constraint信息写入到表”_timescaledb_catalog.chunk_constraint“中
+
+			//在chunk表上创建constraint，并添加相关的metadata（例如index）到catalog上
+			chunk_constraint_create(cc,
+									chunk->table_id,
+									chunk->fd.id,
+									chunk->hypertable_relid,
+									chunk->fd.hypertable_id);
+		}
+
+		ReleaseSysCache(tuple);
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
