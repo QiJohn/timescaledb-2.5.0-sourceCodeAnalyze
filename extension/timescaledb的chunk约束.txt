@@ -17,7 +17,7 @@
 			ChunkConstraint *cc =
 				chunk_constraints_add(chunk->constraints, chunk->fd.id, 0, NULL, NameStr(con->conname));
 
-			chunk_constraint_insert(cc);      //将constraint信息写入到表”_timescaledb_catalog.chunk_constraint“中
+			chunk_constraint_insert(cc);      //将hypertable与chunk的constraint之间的映射信息写入到表”_timescaledb_catalog.chunk_constraint“中
 
 			//在chunk表上创建constraint，并添加相关的metadata（例如index）到catalog上
 			chunk_constraint_create(cc,
@@ -34,8 +34,33 @@
 
 
 
-
-
+================表_timescaledb_catalog.chunk_constraint==============
+	该表为timescaledb自定义的表，用于存储timescledb自定义表hypertable的constraint和chunks的constraint之间的映射关系。
+查询存储信息如下所示：
+postgres=# select * from _timescaledb_catalog.chunk_constraint;
+ chunk_id | dimension_slice_id |         constraint_name          | hypertable_constraint_name
+----------+--------------------+----------------------------------+----------------------------
+        1 |                  1 | constraint_1                     |
+        1 |                    | 1_1_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        2 |                  2 | constraint_2                     |
+        2 |                    | 2_2_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        3 |                  3 | constraint_3                     |
+        3 |                    | 3_3_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        4 |                  4 | constraint_4                     |
+        4 |                    | 4_4_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        5 |                  5 | constraint_5                     |
+        5 |                    | 5_5_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        6 |                  6 | constraint_6                     |
+        6 |                    | 6_6_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        7 |                  7 | constraint_7                     |
+        7 |                    | 7_7_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        8 |                  8 | constraint_8                     |
+        8 |                    | 8_8_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+        9 |                  9 | constraint_9                     |
+        9 |                    | 9_9_sensor_data_sensor_id_fkey   | sensor_data_sensor_id_fkey
+       10 |                 10 | constraint_10                    |
+       10 |                    | 10_10_sensor_data_sensor_id_fkey | sensor_data_sensor_id_fkey
+(20 rows)
 
 
 
